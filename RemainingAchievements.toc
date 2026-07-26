@@ -4,6 +4,7 @@
 ## Author: Andrew
 ## Version: 0.1.0
 ## SavedVariables: RemainingAchievementsDB
+## X-Curse-Project-ID: 1626227
 ## IconTexture: Interface\AchievementFrame\UI-Achievement-TinyShield
 
 Core.lua
