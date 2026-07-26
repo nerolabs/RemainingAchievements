@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-512.png" width="180" alt="Remaining Achievements logo">
+</p>
+
 # Remaining Achievements
 
 A World of Warcraft (retail) addon that adds a **"Remaining"** tab to the default Achievement UI (`Y`), showing one flat, scrollable list of **every achievement you haven't completed yet** — across all categories, no more clicking through them one by one.

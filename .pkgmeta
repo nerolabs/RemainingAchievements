@@ -3,3 +3,4 @@ package-as: RemainingAchievements
 ignore:
   - HANDOFF_RemainingAchievements.md
   - README.md
+  - assets

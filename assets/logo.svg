@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Remaining Achievements</title>
+  <desc>A gold achievement shield containing a checklist: two items completed, one remaining.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#2b2013"/>
+      <stop offset="100%" stop-color="#120d07"/>
+    </radialGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#54401f"/>
+      <stop offset="100%" stop-color="#2c2110"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f7d878"/>
+      <stop offset="55%" stop-color="#d4a93c"/>
+      <stop offset="100%" stop-color="#a67c1e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background tile -->
+  <rect x="4" y="4" width="504" height="504" rx="92" fill="url(#bg)"/>
+  <rect x="10" y="10" width="492" height="492" rx="86" fill="none" stroke="#6b5322" stroke-width="3" opacity="0.8"/>
+
+  <!-- shield -->
+  <path d="M146 120 L366 120 L366 268 C366 352 322 408 256 434 C190 408 146 352 146 268 Z"
+        fill="url(#shield)" stroke="url(#gold)" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M146 120 L366 120 L366 268 C366 352 322 408 256 434 C190 408 146 352 146 268 Z"
+        fill="none" stroke="#f7e2a0" stroke-width="3" opacity="0.55"/>
+
+  <!-- row 1: completed (muted) -->
+  <g opacity="0.62">
+    <rect x="178" y="181" width="30" height="30" rx="7" fill="none" stroke="#a08339" stroke-width="4"/>
+    <path d="M185 196 L192 204 L203 187" fill="none" stroke="#c9a845" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="224" y="190" width="104" height="12" rx="6" fill="#6f5b2e"/>
+  </g>
+
+  <!-- row 2: completed (muted) -->
+  <g opacity="0.62">
+    <rect x="178" y="237" width="30" height="30" rx="7" fill="none" stroke="#a08339" stroke-width="4"/>
+    <path d="M185 252 L192 260 L203 243" fill="none" stroke="#c9a845" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="224" y="246" width="104" height="12" rx="6" fill="#6f5b2e"/>
+  </g>
+
+  <!-- row 3: remaining (bright, empty) -->
+  <rect x="178" y="293" width="30" height="30" rx="7" fill="none" stroke="#ffd75e" stroke-width="10" opacity="0.22"/>
+  <rect x="178" y="293" width="30" height="30" rx="7" fill="none" stroke="#ffd75e" stroke-width="4.5"/>
+  <rect x="224" y="302" width="94" height="12" rx="6" fill="#f4c94f"/>
+
+  <!-- sparkle by the remaining item -->
+  <path d="M350 88 L357 106 L375 113 L357 120 L350 138 L343 120 L325 113 L343 106 Z" fill="#ffd75e"/>
+  <path d="M394 138 L398 148 L408 152 L398 156 L394 166 L390 156 L380 152 L390 148 Z" fill="#ffd75e" opacity="0.7"/>
+</svg>
