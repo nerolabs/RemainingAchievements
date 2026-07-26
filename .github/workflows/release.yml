@@ -1,0 +1,27 @@
+# Packages the addon and uploads it to CurseForge + GitHub Releases
+# whenever a version tag (e.g. v0.1.0) is pushed.
+#
+# Required setup, once:
+#   1. Create the project on curseforge.com and put its numeric ID in the TOC:
+#        ## X-Curse-Project-ID: <id>
+#   2. Generate an API token at https://authors.curseforge.com/account/api-tokens
+#      and add it as this repo's actions secret named CF_API_KEY.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

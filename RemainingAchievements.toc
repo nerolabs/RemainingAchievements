@@ -1,0 +1,11 @@
+## Interface: 120005, 120007
+## Title: Remaining Achievements
+## Notes: Adds a "Remaining" tab listing every achievement you haven't completed yet.
+## Author: Andrew
+## Version: 0.1.0
+## SavedVariables: RemainingAchievementsDB
+## IconTexture: Interface\AchievementFrame\UI-Achievement-TinyShield
+
+Core.lua
+UI.lua
+Export.lua
