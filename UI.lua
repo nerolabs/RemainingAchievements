@@ -13,10 +13,11 @@ end
 
 -- Entries currently displayable, plus counts for the header
 -- (remaining/points always exclude hidden, regardless of the toggle).
+-- Empty until the first scan completes.
 function UI.GetDisplayEntries()
 	local showHidden = RA.db.settings.showHidden;
 	local entries, remaining, points, hiddenCount = {}, 0, 0, 0;
-	for _, entry in ipairs(RA.GetRemaining()) do
+	for _, entry in ipairs(RA.GetRemaining() or {}) do
 		local isHidden = RA.IsHidden(entry.id);
 		if isHidden then
 			hiddenCount = hiddenCount + 1;
@@ -38,29 +39,49 @@ local function UpdateCountsDisplay(remaining, points, hiddenCount)
 end
 
 function UI.UpdateCounts()
-	local remaining, points, hiddenCount = 0, 0, 0;
-	for _, entry in ipairs(RA.GetRemaining()) do
-		if RA.IsHidden(entry.id) then
-			hiddenCount = hiddenCount + 1;
-		else
-			remaining = remaining + 1;
-			points = points + entry.points;
-		end
-	end
-	UpdateCountsDisplay(remaining, points, hiddenCount);
+	UpdateCountsDisplay(select(2, UI.GetDisplayEntries()));
 end
 
-function UI.Refresh()
+local function OnScanComplete()
+	if panel then
+		UI.Refresh();
+	end
+end
+
+-- resetScroll jumps back to the top (used when the search text changes);
+-- otherwise the user's scroll position and expanded row survive the rebuild.
+function UI.Refresh(resetScroll)
 	if not panel then
 		return;
 	end
+	if not RA.GetRemaining() then
+		-- Scan pending: only announce it when there are no (stale) rows to
+		-- keep showing; either way this re-runs once the scan lands.
+		local dataProvider = scrollBox:GetDataProvider();
+		list.LoadingText:SetShown(not dataProvider or dataProvider:GetSize() == 0);
+		RA.RequestRemaining(OnScanComplete);
+		return;
+	end
+	list.LoadingText:Hide();
 	local entries, remaining, points, hiddenCount = UI.GetDisplayEntries();
+	local selected = selectionBehavior:GetFirstSelectedElementData();
+	local selectedID = selected and selected.id;
 	local elements = {};
 	for i, entry in ipairs(entries) do
-		-- id only, no index: routes AchievementTemplateMixin:Init to its by-id path.
-		elements[i] = { id = entry.id };
+		-- category/index feed CalculateSelectedHeight, which lacks Init's
+		-- by-id fallback; including them routes both through the same
+		-- GetAchievementInfo(cat, i) lookup Blizzard's own list uses.
+		elements[i] = { id = entry.id, category = entry.category, index = entry.index };
 	end
-	scrollBox:SetDataProvider(CreateDataProvider(elements));
+	scrollBox:SetDataProvider(CreateDataProvider(elements), not resetScroll and ScrollBoxConstants.RetainScrollPosition or nil);
+	if selectedID then
+		local elementData = scrollBox:GetDataProvider():FindElementDataByPredicate(function(data)
+			return data.id == selectedID;
+		end);
+		if elementData then
+			selectionBehavior:SelectElementData(elementData);
+		end
+	end
 	UpdateCountsDisplay(remaining, points, hiddenCount);
 end
 
@@ -228,7 +249,7 @@ local function CreatePanel()
 		end
 		searchTimer = C_Timer.NewTimer(0.25, function()
 			if UI.IsShown() then
-				UI.Refresh();
+				UI.Refresh(true);
 			end
 		end);
 	end);
@@ -272,7 +293,11 @@ local function CreatePanel()
 	exportButton:SetPoint("BOTTOM", 0, 14);
 	exportButton:SetText("Export Spreadsheet");
 	exportButton:SetScript("OnClick", function()
-		RA.Export.Show((UI.GetDisplayEntries()));
+		if not RA.GetRemaining() then
+			return; -- initial scan still running
+		end
+		local entries = UI.GetDisplayEntries();
+		RA.Export.Show(entries, searchText ~= nil);
 	end);
 
 	-- Right pane: the list, mirroring AchievementFrame.Achievements geometry.
@@ -303,6 +328,11 @@ local function CreatePanel()
 
 	local border = CreateFrame("Frame", nil, list, "AchivementGoldBorderBackdrop");
 	border:SetAllPoints();
+
+	list.LoadingText = list:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge");
+	list.LoadingText:SetPoint("CENTER");
+	list.LoadingText:SetText("Crunching achievements...");
+	list.LoadingText:Hide();
 
 	local view = CreateScrollBoxListLinearView();
 	view:SetElementExtentCalculator(function(dataIndex, elementData)

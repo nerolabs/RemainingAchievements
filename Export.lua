@@ -8,7 +8,8 @@ RA.Export = Export;
 
 local dialog, editBox;
 
-local COLUMNS = { "ID", "Name", "Category", "Points", "Description", "RewardText", "Completed", "EarnedByMe", "Hidden", "WowheadURL" };
+-- No "Completed" column: every exported row is by definition incomplete.
+local COLUMNS = { "ID", "Name", "Category", "Points", "Description", "RewardText", "EarnedByMe", "Hidden", "WowheadURL" };
 
 local function CleanField(value)
 	local text = tostring(value == nil and "" or value);
@@ -39,7 +40,7 @@ end
 local function BuildTSV(entries)
 	local lines = { table.concat(COLUMNS, "\t") };
 	for _, entry in ipairs(entries) do
-		local id, name, points, completed, _, _, _, description, _, _, rewardText, _, wasEarnedByMe = GetAchievementInfo(entry.id);
+		local id, name, points, _, _, _, _, description, _, _, rewardText, _, wasEarnedByMe = GetAchievementInfo(entry.id);
 		if id then
 			lines[#lines + 1] = table.concat({
 				id,
@@ -48,7 +49,6 @@ local function BuildTSV(entries)
 				points or 0,
 				CleanField(description),
 				CleanField(rewardText),
-				tostring(completed == true),
 				tostring(wasEarnedByMe == true),
 				tostring(RA.IsHidden(id)),
 				"https://www.wowhead.com/achievement=" .. id,
@@ -83,8 +83,12 @@ local function CreateDialog()
 	hint:SetPoint("TOPLEFT", 14, -30);
 	hint:SetText("Press " .. (IsMacClient() and "Cmd" or "Ctrl") .. "+C to copy, then paste directly into Google Sheets or Excel.");
 
+	dialog.FilterNote = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall");
+	dialog.FilterNote:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -2);
+	dialog.FilterNote:SetText("Search filter active - exporting only the rows currently shown.");
+
 	local scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate");
-	scrollFrame:SetPoint("TOPLEFT", 14, -48);
+	scrollFrame:SetPoint("TOPLEFT", 14, -64);
 	scrollFrame:SetPoint("BOTTOMRIGHT", -32, 12);
 
 	editBox = CreateFrame("EditBox", nil, scrollFrame);
@@ -102,10 +106,12 @@ local function CreateDialog()
 	end);
 end
 
-function Export.Show(entries)
+function Export.Show(entries, isFiltered)
 	if not dialog then
 		CreateDialog();
 	end
+	dialog.TitleContainer.TitleText:SetText(("Remaining Achievements - Export (%d rows)"):format(#entries));
+	dialog.FilterNote:SetShown(isFiltered);
 	dialog:Show();
 	editBox:SetText(BuildTSV(entries));
 	editBox:SetCursorPosition(0);
