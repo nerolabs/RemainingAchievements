@@ -2,11 +2,13 @@
 ## Title: Remaining Achievements
 ## Notes: Adds a "Remaining" tab listing every achievement you haven't completed yet.
 ## Author: Andrew
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: RemainingAchievementsDB
 ## X-Curse-Project-ID: 1626227
 ## IconTexture: Interface\AchievementFrame\UI-Achievement-TinyShield
 
+FactionData.lua
+FoSData.lua
 Core.lua
 UI.lua
 Export.lua

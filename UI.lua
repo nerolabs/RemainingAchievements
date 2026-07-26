@@ -12,15 +12,19 @@ function UI.IsShown()
 end
 
 -- Entries currently displayable, plus counts for the header
--- (remaining/points always exclude hidden, regardless of the toggle).
--- Empty until the first scan completes.
+-- (remaining/points always exclude hidden, regardless of the toggle;
+-- opposite-faction mirrors are listed but never counted, matching the
+-- in-game point total). Empty until the first scan completes.
 function UI.GetDisplayEntries()
 	local showHidden = RA.db.settings.showHidden;
-	local entries, remaining, points, hiddenCount = {}, 0, 0, 0;
+	local entries, remaining, points, hiddenCount, mirrorCount, mirrorPoints = {}, 0, 0, 0, 0, 0;
 	for _, entry in ipairs(RA.GetRemaining() or {}) do
 		local isHidden = RA.IsHidden(entry.id);
 		if isHidden then
 			hiddenCount = hiddenCount + 1;
+		elseif entry.mirror ~= nil then
+			mirrorCount = mirrorCount + 1;
+			mirrorPoints = mirrorPoints + entry.points;
 		else
 			remaining = remaining + 1;
 			points = points + entry.points;
@@ -29,13 +33,25 @@ function UI.GetDisplayEntries()
 			entries[#entries + 1] = entry;
 		end
 	end
-	return entries, remaining, points, hiddenCount;
+	return entries, remaining, points, hiddenCount, mirrorCount, mirrorPoints;
 end
 
-local function UpdateCountsDisplay(remaining, points, hiddenCount)
-	controls.CountText:SetText(BreakUpLargeNumbers(remaining) .. " remaining");
-	controls.PointsText:SetText(BreakUpLargeNumbers(points) .. " points unearned");
-	controls.ShowHiddenLabel:SetText(("Show hidden (%d)"):format(hiddenCount));
+local function UpdateCountsDisplay(remaining, points, hiddenCount, mirrorCount, mirrorPoints)
+	mirrorCount, mirrorPoints = mirrorCount or 0, mirrorPoints or 0;
+	local countSuffix, pointsSuffix = "", "";
+	if RA.db.settings.includeMirror then
+		local _, otherFaction = RA.GetOppositeSnapshot();
+		if otherFaction then
+			-- Inline, e.g. "45 remaining (+10 Horde)": the extra work only the
+			-- other faction can do, which DataForAzeroth counts toward totals.
+			local color = (otherFaction == "Horde") and "|cffff4444" or "|cff44aaff";
+			countSuffix = (" %s(+%s %s)|r"):format(color, BreakUpLargeNumbers(mirrorCount), otherFaction);
+			pointsSuffix = (" %s(+%s %s)|r"):format(color, BreakUpLargeNumbers(mirrorPoints), otherFaction);
+		end
+	end
+	controls.CountText:SetText(BreakUpLargeNumbers(remaining) .. " remaining" .. countSuffix);
+	controls.PointsText:SetText(BreakUpLargeNumbers(points) .. " points unearned" .. pointsSuffix);
+	controls.ShowHiddenLabel:SetText(("Show stashed for later (%d)"):format(hiddenCount));
 end
 
 function UI.UpdateCounts()
@@ -55,15 +71,18 @@ function UI.Refresh(resetScroll)
 		return;
 	end
 	if not RA.GetRemaining() then
-		-- Scan pending: only announce it when there are no (stale) rows to
-		-- keep showing; either way this re-runs once the scan lands.
+		-- Scan pending: the big loading text only when there are no (stale)
+		-- rows to keep showing, the small scanning indicator always; either
+		-- way this re-runs once the scan lands.
 		local dataProvider = scrollBox:GetDataProvider();
 		list.LoadingText:SetShown(not dataProvider or dataProvider:GetSize() == 0);
+		panel.ScanningText:Show();
 		RA.RequestRemaining(OnScanComplete);
 		return;
 	end
 	list.LoadingText:Hide();
-	local entries, remaining, points, hiddenCount = UI.GetDisplayEntries();
+	panel.ScanningText:Hide();
+	local entries, remaining, points, hiddenCount, mirrorCount, mirrorPoints = UI.GetDisplayEntries();
 	local selected = selectionBehavior:GetFirstSelectedElementData();
 	local selectedID = selected and selected.id;
 	local elements = {};
@@ -71,7 +90,9 @@ function UI.Refresh(resetScroll)
 		-- category/index feed CalculateSelectedHeight, which lacks Init's
 		-- by-id fallback; including them routes both through the same
 		-- GetAchievementInfo(cat, i) lookup Blizzard's own list uses.
-		elements[i] = { id = entry.id, category = entry.category, index = entry.index };
+		-- Progressive chain steps have no index and are sized by id instead
+		-- (see the extent calculator).
+		elements[i] = { id = entry.id, category = entry.category, index = entry.index, secret = entry.secret, mirror = entry.mirror };
 	end
 	scrollBox:SetDataProvider(CreateDataProvider(elements), not resetScroll and ScrollBoxConstants.RetainScrollPosition or nil);
 	if selectedID then
@@ -82,7 +103,112 @@ function UI.Refresh(resetScroll)
 			selectionBehavior:SelectElementData(elementData);
 		end
 	end
-	UpdateCountsDisplay(remaining, points, hiddenCount);
+	UpdateCountsDisplay(remaining, points, hiddenCount, mirrorCount, mirrorPoints);
+end
+
+-- Mirrors AchievementTemplateMixin.CalculateSelectedHeight, which resolves
+-- elementData only through GetAchievementInfo(category, index) and so cannot
+-- size progressive chain steps that have no list coordinates; this does the
+-- same math from a by-id lookup. Blizzard's guild-view minimum is dropped
+-- (our list never shows guild achievements). Inlined file-locals from
+-- Blizzard_AchievementUI.lua: 3 collapsed description lines, forced-column
+-- thresholds of 20 criteria / 220px.
+local function CalculateSelectedHeightByID(achievementID)
+	local totalHeight = ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT;
+	local objectivesHeight = 0;
+
+	if not AchievementFrame.textCheckWidth then
+		AchievementFrame.PlaceholderName:SetText("- ");
+		AchievementFrame.textCheckWidth = AchievementFrame.PlaceholderName:GetStringWidth();
+	end
+
+	local id, _, _, completed, _, _, _, description, _, _, rewardText = GetAchievementInfo(achievementID);
+	if completed and GetPreviousAchievement(id) then
+		local achievementCount = 1;
+		local nextID = id;
+		while GetPreviousAchievement(nextID) do
+			achievementCount = achievementCount + 1;
+			nextID = GetPreviousAchievement(nextID);
+		end
+		local maxAchievementsPerRow = 6;
+		objectivesHeight = math.ceil(achievementCount / maxAchievementsPerRow) * ACHIEVEMENTUI_PROGRESSIVEHEIGHT;
+	else
+		local numExtraCriteriaRows = 0;
+		local maxCriteriaWidth = 0;
+		local textStrings = 0;
+		local progressBars = 0;
+		local metas = 0;
+		local numMetaRows = 0;
+		local numCriteriaRows = 0;
+		if not completed and GetAchievementGuildRep(id) then
+			numExtraCriteriaRows = numExtraCriteriaRows + 1;
+		end
+
+		for i = 1, GetAchievementNumCriteria(id) do
+			local criteriaString, criteriaType, criteriaCompleted, _, _, _, criteriaFlags, assetID = GetAchievementCriteriaInfo(id, i);
+			if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID then
+				metas = metas + 1;
+				if metas == 1 or (math.fmod(metas, 2) ~= 0) then
+					numMetaRows = numMetaRows + 1;
+				end
+			elseif bit.band(criteriaFlags, EVALUATION_TREE_FLAG_PROGRESS_BAR) == EVALUATION_TREE_FLAG_PROGRESS_BAR then
+				progressBars = progressBars + 1;
+				numCriteriaRows = numCriteriaRows + 1;
+			else
+				textStrings = textStrings + 1;
+				local stringWidth;
+				local maxCriteriaContentWidth;
+				if criteriaCompleted then
+					maxCriteriaContentWidth = ACHIEVEMENTUI_MAXCONTENTWIDTH - ACHIEVEMENTUI_CRITERIACHECKWIDTH;
+					AchievementFrame.PlaceholderName:SetText(criteriaString);
+					stringWidth = math.min(AchievementFrame.PlaceholderName:GetStringWidth(), maxCriteriaContentWidth);
+				else
+					maxCriteriaContentWidth = ACHIEVEMENTUI_MAXCONTENTWIDTH - AchievementFrame.textCheckWidth;
+					AchievementFrame.PlaceholderName:SetText("- " .. criteriaString);
+					stringWidth = math.min(AchievementFrame.PlaceholderName:GetStringWidth() - AchievementFrame.textCheckWidth, maxCriteriaContentWidth);
+				end
+				if AchievementFrame.PlaceholderName:GetWidth() > maxCriteriaContentWidth then
+					AchievementFrame.PlaceholderName:SetWidth(maxCriteriaContentWidth);
+				end
+				maxCriteriaWidth = math.max(maxCriteriaWidth, stringWidth + ACHIEVEMENTUI_CRITERIACHECKWIDTH);
+				numCriteriaRows = numCriteriaRows + 1;
+			end
+		end
+
+		if textStrings > 0 and progressBars > 0 then
+			-- Mixed criteria render single-column; keep numCriteriaRows as-is.
+		elseif textStrings > 1 then
+			local numColumns = math.floor(ACHIEVEMENTUI_MAXCONTENTWIDTH / maxCriteriaWidth);
+			if numColumns == 1 and textStrings >= 20 and maxCriteriaWidth <= 220 then
+				numColumns = 2;
+			end
+			if numColumns > 1 then
+				numCriteriaRows = math.ceil(numCriteriaRows / numColumns);
+			end
+		end
+
+		numCriteriaRows = numCriteriaRows + numExtraCriteriaRows;
+		objectivesHeight = numMetaRows * ACHIEVEMENTBUTTON_METAROWHEIGHT + numCriteriaRows * ACHIEVEMENTBUTTON_CRITERIAROWHEIGHT;
+		if metas > 0 or progressBars > 0 then
+			objectivesHeight = objectivesHeight + 10;
+		end
+	end
+
+	totalHeight = totalHeight + objectivesHeight;
+
+	AchievementFrame.PlaceholderHiddenDescription:SetText(description);
+	local descriptionHeight = AchievementFrame.PlaceholderHiddenDescription:GetHeight();
+	-- Same AchievementDescriptionFont Blizzard measures its line count with.
+	local _, fontHeight = AchievementFrame.PlaceholderHiddenDescription:GetFont();
+	local numLines = math.ceil(descriptionHeight / fontHeight);
+	if totalHeight ~= ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT or numLines > 3 then
+		totalHeight = totalHeight + descriptionHeight - ACHIEVEMENTBUTTON_DESCRIPTIONHEIGHT;
+		if rewardText ~= "" then
+			totalHeight = totalHeight + 4;
+		end
+	end
+
+	return totalHeight;
 end
 
 -- [[ Row behavior ]] --
@@ -93,10 +219,10 @@ local function UpdateRowHiddenState(button)
 	local hideButton = button.RAHideButton;
 	if isHidden then
 		hideButton:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton");
-		hideButton.tooltipText = "Restore to Remaining list";
+		hideButton.tooltipText = "Return to the Remaining list";
 	else
 		hideButton:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up");
-		hideButton.tooltipText = "Hide from Remaining list";
+		hideButton.tooltipText = "Stash for later";
 	end
 end
 
@@ -151,12 +277,12 @@ local function ShowRowMenu(row)
 	MenuUtil.CreateContextMenu(row, function(owner, rootDescription)
 		rootDescription:SetTag("MENU_REMAINING_ACHIEVEMENTS_ROW");
 		if RA.IsHidden(id) then
-			rootDescription:CreateButton("Restore to list", function()
+			rootDescription:CreateButton("Return to list", function()
 				RA.SetHidden(id, false);
 				UI.Refresh();
 			end);
 		else
-			rootDescription:CreateButton("Hide from list", function()
+			rootDescription:CreateButton("Stash for later", function()
 				RA.SetHidden(id, true);
 				UI.Refresh();
 			end);
@@ -203,6 +329,15 @@ end
 
 local function InitializeRow(button, elementData)
 	button:Init(elementData);
+	-- Init just set the Label from the achievement name, so pooled reuse
+	-- can't stack the tags.
+	if elementData.mirror ~= nil then
+		local tag = (elementData.mirror == RA.FACTION_HORDE)
+			and "|cffff4444(Horde)|r" or "|cff44aaff(Alliance)|r";
+		button.Label:SetText(button.Label:GetText() .. " " .. tag);
+	elseif elementData.secret then
+		button.Label:SetText(button.Label:GetText() .. " |cff71d5ff(hidden)|r");
+	end
 	if not button.RAHideButton then
 		button:RegisterForClicks("LeftButtonUp", "RightButtonUp");
 		button:SetScript("OnClick", OnRowClick);
@@ -259,24 +394,49 @@ local function CreatePanel()
 	controls.PointsText = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
 	controls.PointsText:SetPoint("TOPLEFT", controls.CountText, "BOTTOMLEFT", 0, -4);
 
+	-- Hover note for the "(+N Faction)" suffixes the mirror toggle adds.
+	local countsHover = CreateFrame("Frame", nil, controls);
+	countsHover:SetPoint("TOPLEFT", controls.CountText, "TOPLEFT", 0, 2);
+	countsHover:SetPoint("BOTTOMRIGHT", controls.PointsText, "BOTTOMRIGHT", 0, -2);
+	countsHover:EnableMouse(true);
+	countsHover:SetScript("OnEnter", function(self)
+		if not RA.db.settings.includeMirror then
+			return;
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+		GameTooltip:SetText("Opposite-faction totals", 1, 1, 1);
+		GameTooltip:AddLine("These factional points count towards totals on DataForAzeroth.", nil, nil, nil, true);
+		GameTooltip:Show();
+	end);
+	countsHover:SetScript("OnLeave", GameTooltip_Hide);
+
+	-- Toggle order (top to bottom): opposite faction, stashed, hidden
+	-- achievements, FoS. fosCheck is re-anchored below secretCheck after the
+	-- others exist.
 	local fosCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	fosCheck:SetSize(26, 26);
-	fosCheck:SetPoint("TOPLEFT", 8, -96);
 	fosCheck:SetChecked(RA.db.settings.includeFoS);
 	fosCheck:SetScript("OnClick", function(self)
 		RA.db.settings.includeFoS = self:GetChecked() and true or false;
 		RA.InvalidateCache();
 		UI.Refresh();
 	end);
+	fosCheck:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+		GameTooltip:SetText("Feats of Strength", 1, 1, 1);
+		GameTooltip:AddLine("Obtainable Feats of Strength for your faction, including known hidden ones. Retired content is filtered out: promotions, old PvP titles, one-time world events, realm firsts, and past-season feats. Beta: the game has no obtainability data, so report anything that slips through.", nil, nil, nil, true);
+		GameTooltip:Show();
+	end);
+	fosCheck:SetScript("OnLeave", GameTooltip_Hide);
 	local fosLabel = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
 	fosLabel:SetPoint("LEFT", fosCheck, "RIGHT", 2, 0);
 	fosLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	fosLabel:SetJustifyH("LEFT");
-	fosLabel:SetText("Include Feats of Strength");
+	fosLabel:SetText("Include Feats of Strength |cffff7f00(beta)|r");
 
 	local hiddenCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	hiddenCheck:SetSize(26, 26);
-	hiddenCheck:SetPoint("TOPLEFT", fosCheck, "BOTTOMLEFT", 0, -4);
+	hiddenCheck:SetPoint("TOPLEFT", 8, -126); -- second slot, below mirrorCheck
 	hiddenCheck:SetChecked(RA.db.settings.showHidden);
 	hiddenCheck:SetScript("OnClick", function(self)
 		RA.db.settings.showHidden = self:GetChecked() and true or false;
@@ -286,7 +446,60 @@ local function CreatePanel()
 	controls.ShowHiddenLabel:SetPoint("LEFT", hiddenCheck, "RIGHT", 2, 0);
 	controls.ShowHiddenLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	controls.ShowHiddenLabel:SetJustifyH("LEFT");
-	controls.ShowHiddenLabel:SetText("Show hidden (0)");
+	controls.ShowHiddenLabel:SetText("Show stashed for later (0)");
+
+	local secretCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
+	secretCheck:SetSize(26, 26);
+	secretCheck:SetPoint("TOPLEFT", hiddenCheck, "BOTTOMLEFT", 0, -4);
+	secretCheck:SetChecked(RA.db.settings.includeSecret);
+	secretCheck:SetScript("OnClick", function(self)
+		RA.db.settings.includeSecret = self:GetChecked() and true or false;
+		RA.InvalidateCache();
+		UI.Refresh();
+	end);
+	secretCheck:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+		GameTooltip:SetText("Hidden achievements", 1, 1, 1);
+		GameTooltip:AddLine("Achievements Blizzard hides from the UI until they are earned. Beta: may include the occasional unobtainable achievement.", nil, nil, nil, true);
+		GameTooltip:Show();
+	end);
+	secretCheck:SetScript("OnLeave", GameTooltip_Hide);
+	local secretLabel = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
+	secretLabel:SetPoint("LEFT", secretCheck, "RIGHT", 2, 0);
+	secretLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
+	secretLabel:SetJustifyH("LEFT");
+	secretLabel:SetText("Include hidden achievements |cffff7f00(beta)|r");
+
+	local mirrorCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
+	mirrorCheck:SetSize(26, 26);
+	mirrorCheck:SetPoint("TOPLEFT", 8, -96); -- top slot
+	mirrorCheck:SetChecked(RA.db.settings.includeMirror);
+	mirrorCheck:SetScript("OnClick", function(self)
+		RA.db.settings.includeMirror = self:GetChecked() and true or false;
+		RA.InvalidateCache();
+		UI.Refresh();
+	end);
+	mirrorCheck:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+		GameTooltip:SetText("Opposite-faction achievements", 1, 1, 1);
+		GameTooltip:AddLine("Achievements only the other faction can still earn, DataForAzeroth-style. Uses the Remaining list recorded when a character of that faction opens this tab.", nil, nil, nil, true);
+		local snapshot, otherFaction = RA.GetOppositeSnapshot();
+		if snapshot then
+			GameTooltip:AddLine(("Using the %s list from %s, recorded %s."):format(otherFaction, snapshot.character, date("%Y-%m-%d %H:%M", snapshot.when)), 0.6, 0.9, 0.6, true);
+		elseif otherFaction then
+			GameTooltip:AddLine(("No %s data yet: log into a %s character and open the Remaining tab once."):format(otherFaction, otherFaction), 1, 0.5, 0.3, true);
+		else
+			GameTooltip:AddLine("Not available on neutral characters.", 1, 0.5, 0.3, true);
+		end
+		GameTooltip:Show();
+	end);
+	mirrorCheck:SetScript("OnLeave", GameTooltip_Hide);
+	local mirrorLabel = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
+	mirrorLabel:SetPoint("LEFT", mirrorCheck, "RIGHT", 2, 0);
+	mirrorLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
+	mirrorLabel:SetJustifyH("LEFT");
+	mirrorLabel:SetText("Include opposite faction |cffff7f00(beta)|r");
+	fosCheck:SetPoint("TOPLEFT", secretCheck, "BOTTOMLEFT", 0, -4); -- bottom slot
 
 	local exportButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate");
 	exportButton:SetSize(158, 22);
@@ -334,10 +547,23 @@ local function CreatePanel()
 	list.LoadingText:SetText("Crunching achievements...");
 	list.LoadingText:Hide();
 
+	-- Shown while an async rescan runs behind rows that are still on screen
+	-- (toggle changes, achievement earned). Lives in the header strip above
+	-- the list — the spot Blizzard's filter dropdown occupies on other tabs —
+	-- so it is in the eyeline; the big list-center text only covers the
+	-- empty-list case.
+	panel.ScanningText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal");
+	panel.ScanningText:SetPoint("BOTTOMLEFT", list, "TOPLEFT", 6, 3);
+	panel.ScanningText:SetText("Scanning achievements...");
+	panel.ScanningText:Hide();
+
 	local view = CreateScrollBoxListLinearView();
 	view:SetElementExtentCalculator(function(dataIndex, elementData)
 		if SelectionBehaviorMixin.IsElementDataIntrusiveSelected(elementData) then
-			return AchievementTemplateMixin.CalculateSelectedHeight(elementData);
+			if elementData.index then
+				return AchievementTemplateMixin.CalculateSelectedHeight(elementData);
+			end
+			return CalculateSelectedHeightByID(elementData.id);
 		else
 			return ACHIEVEMENTBUTTON_COLLAPSEDHEIGHT;
 		end
@@ -403,6 +629,24 @@ local function Deactivate()
 	end
 end
 
+-- ElvUI's achievement skin only restyles AchievementFrameTab1-3; run our tab
+-- through its public Skins API so it matches. HandleTab works standalone, so
+-- it does not matter whether ElvUI's own skin has run yet.
+local function ApplyElvUISkin(tab)
+	if not C_AddOns.IsAddOnLoaded("ElvUI") then
+		return;
+	end
+	local E = unpack(_G.ElvUI);
+	local blizzardSkins = E and E.private and E.private.skins and E.private.skins.blizzard;
+	if not (blizzardSkins and blizzardSkins.enable and blizzardSkins.achievement) then
+		return;
+	end
+	local Skins = E.GetModule and E:GetModule("Skins", true);
+	if Skins and Skins.HandleTab then
+		Skins:HandleTab(tab);
+	end
+end
+
 local function CreateTab()
 	local index = 4;
 	while _G["AchievementFrameTab" .. index] do -- another addon may have taken tab 4
@@ -419,6 +663,7 @@ local function CreateTab()
 		PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB);
 	end);
 	PanelTemplates_TabResize(tab, 30);
+	ApplyElvUISkin(tab);
 	UI.tab = tab;
 
 	PanelTemplates_SetNumTabs(AchievementFrame, index);

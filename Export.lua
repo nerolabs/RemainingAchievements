@@ -9,7 +9,9 @@ RA.Export = Export;
 local dialog, editBox;
 
 -- No "Completed" column: every exported row is by definition incomplete.
-local COLUMNS = { "ID", "Name", "Category", "Points", "Description", "RewardText", "EarnedByMe", "Hidden", "WowheadURL" };
+-- "Stashed" = stashed for later by the user in this addon; "Hidden" = hidden
+-- by Blizzard until earned; "Faction" = set only on opposite-faction rows.
+local COLUMNS = { "ID", "Name", "Category", "Points", "Description", "RewardText", "EarnedByMe", "Stashed", "Hidden", "Faction", "WowheadURL" };
 
 local function CleanField(value)
 	local text = tostring(value == nil and "" or value);
@@ -51,6 +53,8 @@ local function BuildTSV(entries)
 				CleanField(rewardText),
 				tostring(wasEarnedByMe == true),
 				tostring(RA.IsHidden(id)),
+				tostring(entry.secret == true),
+				(entry.mirror == RA.FACTION_HORDE and "Horde") or (entry.mirror == RA.FACTION_ALLIANCE and "Alliance") or "",
 				"https://www.wowhead.com/achievement=" .. id,
 			}, "\t");
 		end
