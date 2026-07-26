@@ -4,3 +4,4 @@ ignore:
   - HANDOFF_RemainingAchievements.md
   - README.md
   - assets
+  - dev-deploy.sh
