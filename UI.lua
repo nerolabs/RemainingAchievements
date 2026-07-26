@@ -467,7 +467,7 @@ local function CreatePanel()
 	secretCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 		GameTooltip:SetText("Hidden achievements", 1, 1, 1);
-		GameTooltip:AddLine("True hidden achievements: point-earning achievements Blizzard hides from the UI until they are earned. Feats of Strength are not included here - they have their own toggle below. Beta: may include the occasional unobtainable achievement.", nil, nil, nil, true);
+		GameTooltip:AddLine("True hidden achievements: point-earning achievements Blizzard hides from the UI until they are earned. Feats of Strength are not included here - they have their own toggle below. May occasionally list one that is no longer obtainable - please report any you spot.", nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	secretCheck:SetScript("OnLeave", GameTooltip_Hide);
@@ -475,7 +475,7 @@ local function CreatePanel()
 	secretLabel:SetPoint("LEFT", secretCheck, "RIGHT", 2, 0);
 	secretLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	secretLabel:SetJustifyH("LEFT");
-	secretLabel:SetText("Include hidden achievements |cffff7f00(beta)|r");
+	secretLabel:SetText("Include hidden achievements");
 
 	local mirrorCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	mirrorCheck:SetSize(26, 26);
@@ -505,7 +505,7 @@ local function CreatePanel()
 	mirrorLabel:SetPoint("LEFT", mirrorCheck, "RIGHT", 2, 0);
 	mirrorLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	mirrorLabel:SetJustifyH("LEFT");
-	mirrorLabel:SetText("Include opposite faction |cffff7f00(beta)|r");
+	mirrorLabel:SetText("Include opposite faction");
 	fosCheck:SetPoint("TOPLEFT", secretCheck, "BOTTOMLEFT", 0, -4); -- bottom slot
 
 	local exportButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate");
