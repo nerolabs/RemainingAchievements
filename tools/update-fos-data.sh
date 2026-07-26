@@ -23,8 +23,22 @@ GENERIC_SEASON2_ID_FLOOR = 62000  # "(Season 2)" alone is ambiguous vs TWW S2
 
 RETIRED_CATS = {'15268', '15270', '15274'}  # Promotions, PvP, Events
 BAD_FLAGS = 0x100 | 0x200 | 0x40000 | 0x100000 | 0x1000000 | 0x1
-JUNK = re.compile(r"stress test|remix|awakened|deprecated|\[dnt\]|\(copy\)")
-TIME_LIMITED = re.compile(r"season|before the release|during the")
+# Textual markers for retired content the flags miss: "realm first" (457 has
+# only 0x800, no realm-first bits), "realm-best" (MoP/WoD Challenge Master,
+# challenge modes removed at Legion prepatch), "region-best" (Keystone Victor
+# — same one-slot competitive class as realm-first, and expired-season copies
+# carry no season wording), "no longer attainable" (Old School Ride says it
+# outright).
+JUNK = re.compile(r"stress test|remix|awakened|deprecated|\[dnt\]|\(copy\)"
+                  r"|realm first|realm-best|region-best|no longer attainable")
+# NOT a plain "before": evergreen feats use it too ("before any player is
+# hit", 4524; "the hallway before Scourgelord", 4525). AotC/Cutting Edge are
+# time-limited by name — tier phrasing varies (opening/beginning of the next
+# raid) — and only the current pair survives via CURRENT_MARKERS.
+TIME_LIMITED = re.compile(r"season|before the release|before the opening"
+                          r"|before the beginning|before the expedition"
+                          r"|replaced by|during the"
+                          r"|ahead of the curve|cutting edge")
 
 ach = list(csv.DictReader(open('tools/db2/Achievement.csv')))
 cats = {r['ID']: r for r in csv.DictReader(open('tools/db2/Achievement_Category.csv'))}

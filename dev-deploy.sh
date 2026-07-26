@@ -17,6 +17,7 @@ rsync -v --delete --recursive \
 	./ "$DEST/"
 
 VERSION="$(sed -n 's/^## Version: //p' RemainingAchievements.toc | tr -d '[:space:]')"
+rm -f ./RemainingAchievements-*-dev-*.zip # only the newest tester zip matters
 ZIP="$PWD/RemainingAchievements-$VERSION-dev-$(date +%Y%m%d-%H%M).zip"
 STAGE="$(mktemp -d)"
 mkdir "$STAGE/RemainingAchievements"

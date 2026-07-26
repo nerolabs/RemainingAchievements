@@ -442,6 +442,13 @@ local function CreatePanel()
 		RA.db.settings.showHidden = self:GetChecked() and true or false;
 		UI.Refresh();
 	end);
+	hiddenCheck:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+		GameTooltip:SetText("Stashed for later", 1, 1, 1);
+		GameTooltip:AddLine("Use a row's X button or right-click menu to stash achievements you want to set aside, removing them from the Remaining list and its counts. This toggle shows them again with one-click restore. Stashing persists account-wide.", nil, nil, nil, true);
+		GameTooltip:Show();
+	end);
+	hiddenCheck:SetScript("OnLeave", GameTooltip_Hide);
 	controls.ShowHiddenLabel = controls:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
 	controls.ShowHiddenLabel:SetPoint("LEFT", hiddenCheck, "RIGHT", 2, 0);
 	controls.ShowHiddenLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
@@ -460,7 +467,7 @@ local function CreatePanel()
 	secretCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 		GameTooltip:SetText("Hidden achievements", 1, 1, 1);
-		GameTooltip:AddLine("Achievements Blizzard hides from the UI until they are earned. Beta: may include the occasional unobtainable achievement.", nil, nil, nil, true);
+		GameTooltip:AddLine("True hidden achievements: point-earning achievements Blizzard hides from the UI until they are earned. Feats of Strength are not included here - they have their own toggle below. Beta: may include the occasional unobtainable achievement.", nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	secretCheck:SetScript("OnLeave", GameTooltip_Hide);
@@ -512,6 +519,56 @@ local function CreatePanel()
 		local entries = UI.GetDisplayEntries();
 		RA.Export.Show(entries, searchText ~= nil);
 	end);
+
+	-- Category filter: a dropdown of one checkbox per top-level category
+	-- (all checked by default), so PvP, Pet Battles, etc. can be toggled off
+	-- independently. Feats of Strength are excluded here (own toggle above).
+	local categoriesDropdown = CreateFrame("DropdownButton", nil, controls, "WowStyle1DropdownTemplate");
+	categoriesDropdown:SetSize(158, 22);
+	categoriesDropdown:SetPoint("BOTTOM", exportButton, "TOP", 0, 8);
+	local function UpdateCategoriesText()
+		local hidden = 0;
+		for _ in pairs(RA.db.settings.excludedCategories) do
+			hidden = hidden + 1;
+		end
+		categoriesDropdown:SetDefaultText(hidden > 0
+			and ("Categories (%d hidden)"):format(hidden) or "All categories");
+	end
+	local function SetCategoryExcluded(catID, excluded)
+		RA.db.settings.excludedCategories[catID] = excluded or nil;
+		RA.InvalidateCache();
+		UpdateCategoriesText();
+		UI.Refresh();
+	end
+	categoriesDropdown:SetupMenu(function(dropdown, rootDescription)
+		rootDescription:CreateTitle("Show categories");
+		rootDescription:CreateButton("Check all", function()
+			wipe(RA.db.settings.excludedCategories);
+			RA.InvalidateCache();
+			UpdateCategoriesText();
+			UI.Refresh();
+			return MenuResponse.Refresh;
+		end);
+		rootDescription:CreateButton("Uncheck all", function()
+			for _, cat in ipairs(RA.GetTopLevelCategories()) do
+				RA.db.settings.excludedCategories[cat.id] = true;
+			end
+			RA.InvalidateCache();
+			UpdateCategoriesText();
+			UI.Refresh();
+			return MenuResponse.Refresh;
+		end);
+		rootDescription:CreateDivider();
+		for _, cat in ipairs(RA.GetTopLevelCategories()) do
+			rootDescription:CreateCheckbox(cat.name, function()
+				return not RA.db.settings.excludedCategories[cat.id];
+			end, function()
+				SetCategoryExcluded(cat.id, not RA.db.settings.excludedCategories[cat.id]);
+				return MenuResponse.Refresh;
+			end);
+		end
+	end);
+	UpdateCategoriesText();
 
 	-- Right pane: the list, mirroring AchievementFrame.Achievements geometry.
 	list = CreateFrame("Frame", nil, panel);

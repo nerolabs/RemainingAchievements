@@ -56,6 +56,16 @@ achievements, obtainable-only Feats of Strength, and an opposite-faction view.
 - **Expired seasonal feats are byte-identical to obtainable ones in the data**
   (checked every column incl. LegacyAfterTimeEvent). Only the current-season
   markers in `tools/update-fos-data.sh` distinguish them.
+- **The criteria layer has no obtainability signal either** (verified
+  2026-07-26 against CriteriaTree/Criteria/ModifierTree exports): expired vs
+  current Keystone Master trees are identical (bare Type-250 rating check,
+  season is server-side); Challenge Master / Keystone Victor / gladiator
+  mounts have NO modifier trees at all; the Type-289 "time event" condition
+  on new content references a TimeEvent table that is not shipped to the
+  client (absent from wago.tools) and stays in the data after the window
+  closes. Do not re-investigate — the text-heuristic allowlist is the only
+  client-side option. (DisplaySeason.db2 does exist and names the current
+  season, usable to auto-derive the season-label CURRENT_MARKER.)
 - **No faction field in the API** and `Shares_criteria` is 0 on all 1258
   faction-locked rows — there is no structural mirror-pair link.
 - Never full-rescan on `CRITERIA_UPDATE` (fires constantly); full rescan on

@@ -23,9 +23,15 @@ local REALM_FIRST_FLAGS = 0x100 + 0x200;
 -- export). Curated from tester reports.
 -- 7268/7269/7270: Temple of Kotmogu scenario, removed in MoP beta.
 -- 416: Scarab Lord (AQ gate opening; FoS > Mounts is otherwise obtainable).
+-- Hidden FoS with no textual or flag marker, from tester reports 2026-07-26:
+-- 425 Atiesh (original Naxxramas removed in WotLK), 430 Amani War Bear
+-- (removed with the ZA revamp), 880/881 Swift Zulian Tiger / Swift Razzashi
+-- Raptor (removed with the Cataclysm ZG revamp), 2496 The Fifth Element
+-- (Aqual Quintessence quests removed in Cataclysm).
 local UNOBTAINABLE = {
 	[7268] = true, [7269] = true, [7270] = true,
 	[416] = true,
+	[425] = true, [430] = true, [880] = true, [881] = true, [2496] = true,
 };
 
 -- Every FoS achievement is hidden-until-earned, and expired seasonal feats
@@ -45,6 +51,9 @@ local defaults = {
 		showHidden = false,
 		includeSecret = false,
 		includeMirror = false,
+		-- Top-level category IDs the user has unchecked in the filter dropdown.
+		-- Empty = show every category (the default). Keyed by top-level id.
+		excludedCategories = {},
 	},
 };
 
@@ -90,6 +99,42 @@ local function IsFeatOfStrengthCategory(catID)
 		fosCache[seen] = isFoS;
 	end
 	return isFoS;
+end
+
+-- Top-level (root) category a given category rolls up to, cached. A root
+-- category is one GetCategoryInfo reports with parent -1.
+local topLevelCache = {};
+local function GetTopLevelCategory(catID)
+	if topLevelCache[catID] ~= nil then
+		return topLevelCache[catID];
+	end
+	local top, id, hops = catID, catID, 0;
+	while id and id ~= -1 and hops < 10 do
+		local _, parentID = GetCategoryInfo(id);
+		if parentID == nil or parentID == -1 then
+			top = id;
+			break
+		end
+		id = parentID;
+		hops = hops + 1;
+	end
+	topLevelCache[catID] = top;
+	return top;
+end
+
+-- Ordered top-level categories present in the live category list, minus Feats
+-- of Strength (it has its own toggle). Powers the category filter dropdown.
+function RA.GetTopLevelCategories()
+	local result, seen = {}, {};
+	for _, catID in ipairs(GetCategoryList()) do
+		local top = GetTopLevelCategory(catID);
+		if top and not seen[top] and not IsFeatOfStrengthCategory(top) then
+			seen[top] = true;
+			local name = GetCategoryInfo(top);
+			result[#result + 1] = { id = top, name = name or ("Category " .. top) };
+		end
+	end
+	return result;
 end
 
 -- Every completed scan records this faction's plain remaining list (no FoS,
@@ -154,9 +199,11 @@ local function BuildRemaining()
 	local seen, highestID = {}, 0;
 	local visibleNames = includeMirror and {} or nil;
 	local snapshotIds = {};
+	local excludedCats = RA.db.settings.excludedCategories;
 	for _, catID in ipairs(GetCategoryList()) do
 		local catIsFoS = IsFeatOfStrengthCategory(catID);
-		if not catIsFoS or (includeFoS and not RETIRED_FOS_CATEGORIES[catID]) then
+		if not excludedCats[GetTopLevelCategory(catID)]
+				and (not catIsFoS or (includeFoS and not RETIRED_FOS_CATEGORIES[catID])) then
 			-- The client lists each category's completed achievements first;
 			-- Blizzard's Incomplete filter relies on that ordering, so only
 			-- the incomplete tail needs visiting.
@@ -204,7 +251,7 @@ local function BuildRemaining()
 					local hops = 0;
 					while nextID and hops < 50 do
 						local chainID, chainName, chainPoints, chainCompleted, _, _, _, chainDescription = GetAchievementInfo(nextID);
-						if chainID and not chainCompleted then
+						if chainID and not seen[chainID] and not chainCompleted then
 							if visibleNames and chainName then
 								visibleNames[chainName] = true;
 							end
@@ -282,7 +329,7 @@ local function BuildRemaining()
 					-- FoS entries ride the FoS toggle instead. 0-point hidden
 					-- entries outside FoS are dropped as noise.
 					local wanted = false;
-					if catID and visibleCats[catID] then
+					if catID and visibleCats[catID] and not excludedCats[GetTopLevelCategory(catID)] then
 						if IsFeatOfStrengthCategory(catID) then
 							wanted = includeFoS and (RA.obtainableHiddenFoS[id] == true or OBTAINABLE_HIDDEN_FOS[id] == true);
 						else
@@ -323,13 +370,16 @@ local function BuildRemaining()
 					local ok, id, name, points, completed, _, _, _, description = pcall(GetAchievementInfo, snapID);
 					if ok and id and not completed and points and points > 0
 							and name and name ~= "" and not visibleNames[name] then
-						results[#results + 1] = {
-							id = id,
-							mirror = mirrorCode,
-							name = name,
-							points = points,
-							searchText = (name .. " " .. (description or "")):lower(),
-						};
+						local mcatOK, mcat = pcall(GetAchievementCategory, id);
+						if not (mcatOK and mcat and excludedCats[GetTopLevelCategory(mcat)]) then
+							results[#results + 1] = {
+								id = id,
+								mirror = mirrorCode,
+								name = name,
+								points = points,
+								searchText = (name .. " " .. (description or "")):lower(),
+							};
+						end
 					end
 				end
 				processed = processed + 1;
