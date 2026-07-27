@@ -4,6 +4,16 @@ local ADDON_NAME, RA = ...;
 local UI = {};
 RA.UI = UI;
 
+local L = RA.L;
+
+-- Faction display names come from Blizzard's already-localized globals; the
+-- internal "Horde"/"Alliance" strings stay English for logic/colour keying.
+local function FactionDisplayName(faction)
+	if faction == "Horde" then return FACTION_HORDE; end
+	if faction == "Alliance" then return FACTION_ALLIANCE; end
+	return faction;
+end
+
 local panel, controls, list, scrollBox, scrollBar, selectionBehavior;
 local searchText; -- lowercased current filter, nil when empty
 
@@ -45,13 +55,14 @@ local function UpdateCountsDisplay(remaining, points, hiddenCount, mirrorCount, 
 			-- Inline, e.g. "45 remaining (+10 Horde)": the extra work only the
 			-- other faction can do, which DataForAzeroth counts toward totals.
 			local color = (otherFaction == "Horde") and "|cffff4444" or "|cff44aaff";
-			countSuffix = (" %s(+%s %s)|r"):format(color, BreakUpLargeNumbers(mirrorCount), otherFaction);
-			pointsSuffix = (" %s(+%s %s)|r"):format(color, BreakUpLargeNumbers(mirrorPoints), otherFaction);
+			local factionName = FactionDisplayName(otherFaction);
+			countSuffix = (" %s%s|r"):format(color, (L["(+%s %s)"]):format(BreakUpLargeNumbers(mirrorCount), factionName));
+			pointsSuffix = (" %s%s|r"):format(color, (L["(+%s %s)"]):format(BreakUpLargeNumbers(mirrorPoints), factionName));
 		end
 	end
-	controls.CountText:SetText(BreakUpLargeNumbers(remaining) .. " remaining" .. countSuffix);
-	controls.PointsText:SetText(BreakUpLargeNumbers(points) .. " points unearned" .. pointsSuffix);
-	controls.ShowHiddenLabel:SetText(("Show stashed for later (%d)"):format(hiddenCount));
+	controls.CountText:SetText((L["%s remaining"]):format(BreakUpLargeNumbers(remaining)) .. countSuffix);
+	controls.PointsText:SetText((L["%s points unearned"]):format(BreakUpLargeNumbers(points)) .. pointsSuffix);
+	controls.ShowHiddenLabel:SetText((L["Show stashed for later (%d)"]):format(hiddenCount));
 end
 
 function UI.UpdateCounts()
@@ -216,10 +227,10 @@ local function UpdateRowHiddenState(button)
 	local hideButton = button.RAHideButton;
 	if isHidden then
 		hideButton:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton");
-		hideButton.tooltipText = "Return to the Remaining list";
+		hideButton.tooltipText = L["Return to the Remaining list"];
 	else
 		hideButton:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up");
-		hideButton.tooltipText = "Stash for later";
+		hideButton.tooltipText = L["Stash for later"];
 	end
 end
 
@@ -274,21 +285,21 @@ local function ShowRowMenu(row)
 	MenuUtil.CreateContextMenu(row, function(owner, rootDescription)
 		rootDescription:SetTag("MENU_REMAINING_ACHIEVEMENTS_ROW");
 		if RA.IsHidden(id) then
-			rootDescription:CreateButton("Return to list", function()
+			rootDescription:CreateButton(L["Return to list"], function()
 				RA.SetHidden(id, false);
 				UI.Refresh();
 			end);
 		else
-			rootDescription:CreateButton("Stash for later", function()
+			rootDescription:CreateButton(L["Stash for later"], function()
 				RA.SetHidden(id, true);
 				UI.Refresh();
 			end);
 		end
 		local isTracked = C_ContentTracking.IsTracking(Enum.ContentTrackingType.Achievement, id);
-		rootDescription:CreateButton(isTracked and "Untrack on HUD" or "Track on HUD", function()
+		rootDescription:CreateButton(isTracked and L["Untrack on HUD"] or L["Track on HUD"], function()
 			ToggleHUDTracking(id);
 		end);
-		rootDescription:CreateButton("Link to chat", function()
+		rootDescription:CreateButton(L["Link to chat"], function()
 			local link = GetAchievementLink(id);
 			if link then
 				ChatFrameUtil.InsertLink(link);
@@ -329,11 +340,12 @@ local function InitializeRow(button, elementData)
 	-- Init just set the Label from the achievement name, so pooled reuse
 	-- can't stack the tags.
 	if elementData.mirror ~= nil then
-		local tag = (elementData.mirror == RA.FACTION_HORDE)
-			and "|cffff4444(Horde)|r" or "|cff44aaff(Alliance)|r";
+		local isHorde = elementData.mirror == RA.FACTION_HORDE;
+		local tag = ("%s(%s)|r"):format(isHorde and "|cffff4444" or "|cff44aaff",
+			isHorde and FACTION_HORDE or FACTION_ALLIANCE);
 		button.Label:SetText(button.Label:GetText() .. " " .. tag);
 	elseif elementData.secret then
-		button.Label:SetText(button.Label:GetText() .. " |cff71d5ff(hidden)|r");
+		button.Label:SetText(button.Label:GetText() .. " |cff71d5ff" .. L["(hidden)"] .. "|r");
 	end
 	if not button.RAHideButton then
 		button:RegisterForClicks("LeftButtonUp", "RightButtonUp");
@@ -401,8 +413,8 @@ local function CreatePanel()
 			return;
 		end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-		GameTooltip:SetText("Opposite-faction totals", 1, 1, 1);
-		GameTooltip:AddLine("These factional points count towards totals on DataForAzeroth.", nil, nil, nil, true);
+		GameTooltip:SetText(L["Opposite-faction totals"], 1, 1, 1);
+		GameTooltip:AddLine(L["These factional points count towards totals on DataForAzeroth."], nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	countsHover:SetScript("OnLeave", GameTooltip_Hide);
@@ -420,8 +432,8 @@ local function CreatePanel()
 	end);
 	fosCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-		GameTooltip:SetText("Feats of Strength", 1, 1, 1);
-		GameTooltip:AddLine("Obtainable Feats of Strength for your faction, including known hidden ones. Retired content is filtered out: promotions, old PvP titles, one-time world events, realm firsts, and past-season feats. Beta: the game has no obtainability data, so report anything that slips through.", nil, nil, nil, true);
+		GameTooltip:SetText(L["Feats of Strength"], 1, 1, 1);
+		GameTooltip:AddLine(L["Obtainable Feats of Strength for your faction, including known hidden ones. Retired content is filtered out: promotions, old PvP titles, one-time world events, realm firsts, and past-season feats. Beta: the game has no obtainability data, so report anything that slips through."], nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	fosCheck:SetScript("OnLeave", GameTooltip_Hide);
@@ -429,7 +441,7 @@ local function CreatePanel()
 	fosLabel:SetPoint("LEFT", fosCheck, "RIGHT", 2, 0);
 	fosLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	fosLabel:SetJustifyH("LEFT");
-	fosLabel:SetText("Include Feats of Strength |cffff7f00(beta)|r");
+	fosLabel:SetText(L["Include Feats of Strength |cffff7f00(beta)|r"]);
 
 	local hiddenCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	hiddenCheck:SetSize(26, 26);
@@ -441,8 +453,8 @@ local function CreatePanel()
 	end);
 	hiddenCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-		GameTooltip:SetText("Stashed for later", 1, 1, 1);
-		GameTooltip:AddLine("Use a row's X button or right-click menu to stash achievements you want to set aside, removing them from the Remaining list and its counts. This toggle shows them again with one-click restore. Stashing persists account-wide.", nil, nil, nil, true);
+		GameTooltip:SetText(L["Stashed for later"], 1, 1, 1);
+		GameTooltip:AddLine(L["Use a row's X button or right-click menu to stash achievements you want to set aside, removing them from the Remaining list and its counts. This toggle shows them again with one-click restore. Stashing persists account-wide."], nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	hiddenCheck:SetScript("OnLeave", GameTooltip_Hide);
@@ -450,7 +462,7 @@ local function CreatePanel()
 	controls.ShowHiddenLabel:SetPoint("LEFT", hiddenCheck, "RIGHT", 2, 0);
 	controls.ShowHiddenLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	controls.ShowHiddenLabel:SetJustifyH("LEFT");
-	controls.ShowHiddenLabel:SetText("Show stashed for later (0)");
+	controls.ShowHiddenLabel:SetText((L["Show stashed for later (%d)"]):format(0));
 
 	local secretCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	secretCheck:SetSize(26, 26);
@@ -463,8 +475,8 @@ local function CreatePanel()
 	end);
 	secretCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-		GameTooltip:SetText("Hidden achievements", 1, 1, 1);
-		GameTooltip:AddLine("True hidden achievements: point-earning achievements Blizzard hides from the UI until they are earned. Feats of Strength are not included here - they have their own toggle below. May occasionally list one that is no longer obtainable - please report any you spot.", nil, nil, nil, true);
+		GameTooltip:SetText(L["Hidden achievements"], 1, 1, 1);
+		GameTooltip:AddLine(L["True hidden achievements: point-earning achievements Blizzard hides from the UI until they are earned. Feats of Strength are not included here - they have their own toggle below. May occasionally list one that is no longer obtainable - please report any you spot."], nil, nil, nil, true);
 		GameTooltip:Show();
 	end);
 	secretCheck:SetScript("OnLeave", GameTooltip_Hide);
@@ -472,7 +484,7 @@ local function CreatePanel()
 	secretLabel:SetPoint("LEFT", secretCheck, "RIGHT", 2, 0);
 	secretLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	secretLabel:SetJustifyH("LEFT");
-	secretLabel:SetText("Include hidden achievements");
+	secretLabel:SetText(L["Include hidden achievements"]);
 
 	local mirrorCheck = CreateFrame("CheckButton", nil, controls, "UICheckButtonTemplate");
 	mirrorCheck:SetSize(26, 26);
@@ -485,29 +497,30 @@ local function CreatePanel()
 	end);
 	mirrorCheck:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-		GameTooltip:SetText("Opposite-faction achievements", 1, 1, 1);
-		GameTooltip:AddLine("Achievements only the other faction can still earn, DataForAzeroth-style. Uses the Remaining list recorded when a character of that faction opens this tab.", nil, nil, nil, true);
+		GameTooltip:SetText(L["Opposite-faction achievements"], 1, 1, 1);
+		GameTooltip:AddLine(L["Achievements only the other faction can still earn, DataForAzeroth-style. Uses the Remaining list recorded when a character of that faction opens this tab."], nil, nil, nil, true);
 		local snapshot, otherFaction = RA.GetOppositeSnapshot();
+		local otherName = otherFaction and FactionDisplayName(otherFaction);
 		if snapshot then
 			-- Snapshots self-heal (account-completed entries are filtered out on
 			-- every scan), so staleness is a soft nudge: green when fresh, amber
 			-- past two weeks, orange past a month -- prompting a re-open on that
 			-- faction so newly-added achievements make it into the list.
 			local ageDays = math.floor((time() - (snapshot.when or 0)) / 86400);
-			local ageText = (ageDays <= 0 and "today")
-				or (ageDays == 1 and "yesterday")
-				or (ageDays .. " days ago");
+			local ageText = (ageDays <= 0 and L["today"])
+				or (ageDays == 1 and L["yesterday"])
+				or ((L["%d days ago"]):format(ageDays));
 			local r, g, b = 0.6, 0.9, 0.6;
 			if ageDays >= 30 then r, g, b = 1, 0.5, 0.3;
 			elseif ageDays >= 14 then r, g, b = 1, 0.82, 0.3; end
-			GameTooltip:AddLine(("Using the %s list from %s, recorded %s (%s)."):format(otherFaction, snapshot.character, date("%Y-%m-%d %H:%M", snapshot.when), ageText), r, g, b, true);
+			GameTooltip:AddLine((L["Using the %s list from %s, recorded %s (%s)."]):format(otherName, snapshot.character, date("%Y-%m-%d %H:%M", snapshot.when), ageText), r, g, b, true);
 			if ageDays >= 14 then
-				GameTooltip:AddLine(("Log into a %s character and open the Remaining tab to refresh it."):format(otherFaction), r, g, b, true);
+				GameTooltip:AddLine((L["Log into a %s character and open the Remaining tab to refresh it."]):format(otherName), r, g, b, true);
 			end
 		elseif otherFaction then
-			GameTooltip:AddLine(("No %s data yet: log into a %s character and open the Remaining tab once."):format(otherFaction, otherFaction), 1, 0.5, 0.3, true);
+			GameTooltip:AddLine((L["No %s data yet: log into a %s character and open the Remaining tab once."]):format(otherName, otherName), 1, 0.5, 0.3, true);
 		else
-			GameTooltip:AddLine("Not available on neutral characters.", 1, 0.5, 0.3, true);
+			GameTooltip:AddLine(L["Not available on neutral characters."], 1, 0.5, 0.3, true);
 		end
 		GameTooltip:Show();
 	end);
@@ -516,13 +529,13 @@ local function CreatePanel()
 	mirrorLabel:SetPoint("LEFT", mirrorCheck, "RIGHT", 2, 0);
 	mirrorLabel:SetPoint("RIGHT", controls, "RIGHT", -8, 0);
 	mirrorLabel:SetJustifyH("LEFT");
-	mirrorLabel:SetText("Include opposite faction");
+	mirrorLabel:SetText(L["Include opposite faction"]);
 	fosCheck:SetPoint("TOPLEFT", secretCheck, "BOTTOMLEFT", 0, -4); -- bottom slot
 
 	local exportButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate");
 	exportButton:SetSize(158, 22);
 	exportButton:SetPoint("BOTTOM", 0, 14);
-	exportButton:SetText("Export Spreadsheet");
+	exportButton:SetText(L["Export Spreadsheet"]);
 	exportButton:SetScript("OnClick", function()
 		if not RA.GetRemaining() then
 			return; -- initial scan still running
@@ -635,7 +648,7 @@ local function CreatePanel()
 	spin:SetDuration(1);
 	busy.label = busy:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge");
 	busy.label:SetPoint("TOP", busy.spinner, "BOTTOM", 0, -10);
-	busy.label:SetText("Updating...");
+	busy.label:SetText(L["Updating..."]);
 	busy:SetScript("OnShow", function() rot:Play(); end);
 	busy:SetScript("OnHide", function() rot:Stop(); end);
 	busy:Hide();
@@ -740,7 +753,7 @@ local function CreateTab()
 
 	local tab = CreateFrame("Button", "AchievementFrameTab" .. index, AchievementFrame, "AchievementFrameTabButtonTemplate");
 	tab:SetID(index);
-	tab:SetText("Remaining");
+	tab:SetText(L["Remaining"]);
 	tab:SetPoint("LEFT", _G["AchievementFrameTab" .. (index - 1)], "RIGHT", -5, 0);
 	tab:SetScript("OnClick", function()
 		UI.Activate();

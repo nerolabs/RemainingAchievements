@@ -6,6 +6,8 @@ local ADDON_NAME, RA = ...;
 local Export = {};
 RA.Export = Export;
 
+local L = RA.L;
+
 local dialog, editBox;
 
 -- No "Completed" column: every exported row is by definition incomplete.
@@ -74,7 +76,7 @@ local function CreateDialog()
 	dialog:SetScript("OnDragStart", dialog.StartMoving);
 	dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing);
 	dialog:SetClampedToScreen(true);
-	dialog.TitleContainer.TitleText:SetText("Remaining Achievements - Spreadsheet Export");
+	dialog.TitleContainer.TitleText:SetText(L["Remaining Achievements - Spreadsheet Export"]);
 	tinsert(UISpecialFrames, "RemainingAchievementsExportDialog");
 
 	local close = CreateFrame("Button", nil, dialog, "UIPanelCloseButton");
@@ -85,11 +87,11 @@ local function CreateDialog()
 
 	local hint = dialog:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
 	hint:SetPoint("TOPLEFT", 14, -30);
-	hint:SetText("Press " .. (IsMacClient() and "Cmd" or "Ctrl") .. "+C to copy, then paste directly into Google Sheets or Excel.");
+	hint:SetText((L["Press %s+C to copy, then paste directly into Google Sheets or Excel."]):format(IsMacClient() and "Cmd" or "Ctrl"));
 
 	dialog.FilterNote = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall");
 	dialog.FilterNote:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -2);
-	dialog.FilterNote:SetText("Search filter active - exporting only the rows currently shown.");
+	dialog.FilterNote:SetText(L["Search filter active - exporting only the rows currently shown."]);
 
 	local scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate");
 	scrollFrame:SetPoint("TOPLEFT", 14, -64);
@@ -137,7 +139,7 @@ function RA.ShowCopyDialog(titleText, bodyText)
 
 		local hint = copyDialog:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
 		hint:SetPoint("TOPLEFT", 14, -30);
-		hint:SetText("Press " .. (IsMacClient() and "Cmd" or "Ctrl") .. "+C to copy, then paste into your report.");
+		hint:SetText((L["Press %s+C to copy, then paste into your report."]):format(IsMacClient() and "Cmd" or "Ctrl"));
 
 		local scrollFrame = CreateFrame("ScrollFrame", nil, copyDialog, "UIPanelScrollFrameTemplate");
 		scrollFrame:SetPoint("TOPLEFT", 14, -50);
@@ -169,7 +171,7 @@ function Export.Show(entries, isFiltered)
 	if not dialog then
 		CreateDialog();
 	end
-	dialog.TitleContainer.TitleText:SetText(("Remaining Achievements - Export (%d rows)"):format(#entries));
+	dialog.TitleContainer.TitleText:SetText((L["Remaining Achievements - Export (%d rows)"]):format(#entries));
 	dialog.FilterNote:SetShown(isFiltered);
 	dialog:Show();
 	editBox:SetText(BuildTSV(entries));
