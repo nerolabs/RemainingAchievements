@@ -9,6 +9,7 @@
 
 FactionData.lua
 FoSData.lua
+UnobtainableData.lua
 Core.lua
 UI.lua
 Export.lua

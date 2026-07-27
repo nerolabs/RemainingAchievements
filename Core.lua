@@ -3,47 +3,28 @@ local ADDON_NAME, RA = ...;
 
 RA.FEAT_OF_STRENGTH_ID = 81;
 
--- FoS subcategories that are retired-content classes rather than earnable
--- feats (verified against the Achievement_Category.db2 export): Promotions
--- (Collector's Editions, TCG, ended promos), Player vs. Player (old
--- gladiator/seasonal titles), Events (one-time world events). The game ships
--- no obtainability data, so "obtainable FoS" = the FoS tree minus these,
--- minus realm-firsts, minus UNOBTAINABLE.
-local RETIRED_FOS_CATEGORIES = {
-	[15268] = true, -- Promotions
-	[15270] = true, -- Player vs. Player
-	[15274] = true, -- Events
-};
+-- How Feat-of-Strength obtainability is decided (single source of truth):
+-- every FoS is hidden-until-earned and the game ships no obtainability data, so
+-- a hidden FoS is listed only when it passes BOTH tiers --
+--   1. NOT in RA.unobtainable (UnobtainableData.lua): the curated list of
+--      removed/legacy feats that survive every automated filter.
+--   2. IN the FoSData.lua allowlist as obtainable NOW: evergreen (`= true`)
+--      always, or seasonal (`{season=N}`) only while season N is live.
+-- IsObtainableFoS() below is the single function that answers this. FoS reach
+-- the list only through the discovery pass; the visible walk never surfaces
+-- them (all carry the hidden flag), so it skips FoS categories entirely.
 
--- Realm-first flag bits (Achievement.db2): permanently unobtainable.
+-- Realm-first flag bits (Achievement.db2): permanently unobtainable. Used by
+-- the non-FoS secret discovery filter (NOISE_FLAGS).
 local REALM_FIRST_FLAGS = 0x100 + 0x200;
 
--- Retired/never-shipped content that survives every data filter (visible
--- category, no distinguishing flag — verified against the Achievement.db2
--- export). Curated from tester reports.
--- 7268/7269/7270: Temple of Kotmogu scenario, removed in MoP beta.
--- 416: Scarab Lord (AQ gate opening; FoS > Mounts is otherwise obtainable).
--- Hidden FoS with no textual or flag marker, from tester reports 2026-07-26:
--- 425 Atiesh (original Naxxramas removed in WotLK), 430 Amani War Bear
--- (removed with the ZA revamp), 880/881 Swift Zulian Tiger / Swift Razzashi
--- Raptor (removed with the Cataclysm ZG revamp), 2496 The Fifth Element
--- (Aqual Quintessence quests removed in Cataclysm).
-local UNOBTAINABLE = {
-	[7268] = true, [7269] = true, [7270] = true,
-	[416] = true,
-	[425] = true, [430] = true, [880] = true, [881] = true, [2496] = true,
-};
-
--- Every FoS achievement is hidden-until-earned, and expired seasonal feats
--- are byte-identical in the data to obtainable ones (verified: Stress Test
--- CN Realms carries exactly Ratts' Revenge's flags and category, expired vs.
--- active season keystone rows match completely). So obtainable FoS comes
--- from the generated FoSData.lua allowlist (evergreen + current season);
--- Manual escape hatch for obtainable hidden FoS the generator can't classify.
--- 61199/61200 "Solo Shuffle / Battleground Blitz Medic: Midnight": obtainable
--- throughout the Midnight expansion (desc says "during Midnight", no season), but
--- they live in the PvP category the generator drops when no season is derivable.
--- Evergreen for now; revisit when Midnight ends.
+-- Manual escape hatch for obtainable hidden FoS the generator can't yet
+-- classify (expired seasonal feats are byte-identical in the data to obtainable
+-- ones, so the generator stays conservative). 61199/61200 "Solo Shuffle /
+-- Battleground Blitz Medic: Midnight" are obtainable throughout the Midnight
+-- expansion (desc says "during Midnight", no season) but live in the PvP
+-- category the generator drops when no season is derivable. Evergreen for now;
+-- revisit when Midnight ends.
 local OBTAINABLE_HIDDEN_FOS = {
 	[61199] = true, [61200] = true,
 };
@@ -65,12 +46,16 @@ local function GetEffectiveMythicPlusSeason()
 	return nil;
 end
 
--- An obtainable-FoS entry (from FoSData.lua or the manual escape hatch) is
--- either `true` (evergreen, always obtainable) or a table {season = N}: a
--- seasonal keystone feat obtainable only while season N is the live one.
--- Resolving at runtime means past seasons self-expire and a new season's feats
+-- The single obtainability authority for a hidden FoS (see the two-tier note at
+-- the top of this file). Obtainable only if it is NOT on the removed list AND
+-- has an obtainable entry (from FoSData.lua or the manual escape hatch): `true`
+-- (evergreen, always) or {season = N} matching the live season. Resolving the
+-- season at runtime means past seasons self-expire and a new season's feats
 -- appear the moment the client reports it -- no regeneration needed for either.
 local function IsObtainableFoS(id, currentSeason)
+	if RA.unobtainable[id] then
+		return false;
+	end
 	local entry = RA.obtainableHiddenFoS[id];
 	if entry == nil then
 		entry = OBTAINABLE_HIDDEN_FOS[id];
@@ -243,9 +228,12 @@ local function BuildRemaining()
 	local snapshotIds = {};
 	local excludedCats = RA.db.settings.excludedCategories;
 	for _, catID in ipairs(GetCategoryList()) do
-		local catIsFoS = IsFeatOfStrengthCategory(catID);
-		if not excludedCats[GetTopLevelCategory(catID)]
-				and (not catIsFoS or (includeFoS and not RETIRED_FOS_CATEGORIES[catID])) then
+		-- FoS categories are skipped here: every FoS is hidden-until-earned, so
+		-- this walk never surfaces an unearned one -- they come solely from the
+		-- discovery pass below (IsObtainableFoS). Skipping them also keeps FoS
+		-- out of the opposite-faction snapshot.
+		if not IsFeatOfStrengthCategory(catID)
+				and not excludedCats[GetTopLevelCategory(catID)] then
 			-- The client lists each category's completed achievements first;
 			-- Blizzard's Incomplete filter relies on that ordering, so only
 			-- the incomplete tail needs visiting.
@@ -264,16 +252,13 @@ local function BuildRemaining()
 				end
 			end
 			for i = total - numIncomplete + 1, total do
-				local id, name, points, completed, _, _, _, description, flags = GetAchievementInfo(catID, i);
-				if id and not completed and not UNOBTAINABLE[id]
-						and (not catIsFoS or bit.band(flags or 0, REALM_FIRST_FLAGS) == 0) then
+				local id, name, points, completed, _, _, _, description = GetAchievementInfo(catID, i);
+				if id and not completed and not RA.unobtainable[id] then
 					if visibleNames and name then
 						visibleNames[name] = true;
 					end
 					seen[id] = true;
-					if not catIsFoS then
-						snapshotIds[#snapshotIds + 1] = id;
-					end
+					snapshotIds[#snapshotIds + 1] = id;
 					if id > highestID then
 						highestID = id;
 					end
@@ -298,9 +283,7 @@ local function BuildRemaining()
 								visibleNames[chainName] = true;
 							end
 							seen[chainID] = true;
-							if not catIsFoS then
-								snapshotIds[#snapshotIds + 1] = chainID;
-							end
+							snapshotIds[#snapshotIds + 1] = chainID;
 							if chainID > highestID then
 								highestID = chainID;
 							end
@@ -360,7 +343,7 @@ local function BuildRemaining()
 		local currentMythicSeason = GetEffectiveMythicPlusSeason();
 		for candidate = 1, maxID do
 			local lockedTo = RA.factionLocked[candidate];
-			if not seen[candidate] and not UNOBTAINABLE[candidate]
+			if not seen[candidate] and not RA.unobtainable[candidate]
 					and (lockedTo == nil or lockedTo == myFactionCode)
 					and (not IsValidAchievement or IsValidAchievement(candidate)) then
 				local ok, id, name, points, completed, _, _, _, description, flags, _, _, isGuild, _, _, isStatistic = pcall(GetAchievementInfo, candidate);
@@ -581,7 +564,7 @@ local function DiagnoseAchievement(add, id)
 	add("category", tostring(cat), "isFoSCategory", tostring(cat and IsFeatOfStrengthCategory(cat)));
 	add("factionLocked", tostring(RA.factionLocked and RA.factionLocked[id]),
 		"playerFaction", tostring(UnitFactionGroup("player")));
-	add("inUNOBTAINABLE", tostring(UNOBTAINABLE[id] == true));
+	add("inUnobtainable", tostring(RA.unobtainable[id] == true));
 	local entry = RA.obtainableHiddenFoS[id];
 	if entry == nil then entry = OBTAINABLE_HIDDEN_FOS[id]; end
 	local entryDesc = entry == true and "evergreen (true)"

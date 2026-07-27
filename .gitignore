@@ -1,3 +1,4 @@
 .DS_Store
 *.zip
 tools/db2/
+tools/local/
