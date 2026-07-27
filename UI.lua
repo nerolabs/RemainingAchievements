@@ -71,17 +71,14 @@ function UI.Refresh(resetScroll)
 		return;
 	end
 	if not RA.GetRemaining() then
-		-- Scan pending: the big loading text only when there are no (stale)
-		-- rows to keep showing, the small scanning indicator always; either
-		-- way this re-runs once the scan lands.
-		local dataProvider = scrollBox:GetDataProvider();
-		list.LoadingText:SetShown(not dataProvider or dataProvider:GetSize() == 0);
-		panel.ScanningText:Show();
+		-- Scan pending: show the busy overlay (dimmed spinner) over whatever
+		-- rows remain so a toggle that triggers a rescan gives obvious feedback.
+		-- Re-runs once the async scan lands.
+		panel.BusyOverlay:Show();
 		RA.RequestRemaining(OnScanComplete);
 		return;
 	end
-	list.LoadingText:Hide();
-	panel.ScanningText:Hide();
+	panel.BusyOverlay:Hide();
 	local entries, remaining, points, hiddenCount, mirrorCount, mirrorPoints = UI.GetDisplayEntries();
 	local selected = selectionBehavior:GetFirstSelectedElementData();
 	local selectedID = selected and selected.id;
@@ -599,20 +596,36 @@ local function CreatePanel()
 	local border = CreateFrame("Frame", nil, list, "AchivementGoldBorderBackdrop");
 	border:SetAllPoints();
 
-	list.LoadingText = list:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge");
-	list.LoadingText:SetPoint("CENTER");
-	list.LoadingText:SetText("Crunching achievements...");
-	list.LoadingText:Hide();
-
-	-- Shown while an async rescan runs behind rows that are still on screen
-	-- (toggle changes, achievement earned). Lives in the header strip above
-	-- the list — the spot Blizzard's filter dropdown occupies on other tabs —
-	-- so it is in the eyeline; the big list-center text only covers the
-	-- empty-list case.
-	panel.ScanningText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal");
-	panel.ScanningText:SetPoint("BOTTOMLEFT", list, "TOPLEFT", 6, 3);
-	panel.ScanningText:SetText("Scanning achievements...");
-	panel.ScanningText:Hide();
+	-- Busy overlay: a dimmed scrim + rotating spinner + label shown over the
+	-- list whenever an async rescan runs (toggle change -- opposite faction is
+	-- the slowest -- or an achievement earned). Stays obvious even when stale
+	-- rows are still on screen, which the old top-corner text was not. DIALOG
+	-- strata to cover the HIGH-strata scroll rows; swallows mouse so a row that
+	-- is about to change can't be clicked mid-update.
+	local busy = CreateFrame("Frame", nil, list);
+	busy:SetFrameStrata("DIALOG");
+	busy:SetPoint("TOPLEFT", background);
+	busy:SetPoint("BOTTOMRIGHT", background);
+	busy:EnableMouse(true);
+	local scrim = busy:CreateTexture(nil, "BACKGROUND");
+	scrim:SetAllPoints();
+	scrim:SetColorTexture(0, 0, 0, 0.5);
+	busy.spinner = busy:CreateTexture(nil, "ARTWORK");
+	busy.spinner:SetTexture("Interface\\COMMON\\StreamCircle");
+	busy.spinner:SetSize(44, 44);
+	busy.spinner:SetPoint("CENTER", busy, "CENTER", 0, 12);
+	local rot = busy.spinner:CreateAnimationGroup();
+	rot:SetLooping("REPEAT");
+	local spin = rot:CreateAnimation("Rotation");
+	spin:SetDegrees(-360);
+	spin:SetDuration(1);
+	busy.label = busy:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge");
+	busy.label:SetPoint("TOP", busy.spinner, "BOTTOM", 0, -10);
+	busy.label:SetText("Updating...");
+	busy:SetScript("OnShow", function() rot:Play(); end);
+	busy:SetScript("OnHide", function() rot:Stop(); end);
+	busy:Hide();
+	panel.BusyOverlay = busy;
 
 	local view = CreateScrollBoxListLinearView();
 	view:SetElementExtentCalculator(function(dataIndex, elementData)
