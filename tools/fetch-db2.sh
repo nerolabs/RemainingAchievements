@@ -8,4 +8,7 @@ cd "$(dirname "$0")"
 mkdir -p db2
 curl -sfL "https://wago.tools/db2/Achievement/csv" -o db2/Achievement.csv
 curl -sfL "https://wago.tools/db2/Achievement_Category/csv" -o db2/Achievement_Category.csv
-echo "Fetched $(wc -l < db2/Achievement.csv | tr -d ' ') achievement rows, $(wc -l < db2/Achievement_Category.csv | tr -d ' ') category rows."
+# DisplaySeason maps (expansion, ordinal) -> the global M+ season number the
+# FoS generator tags seasonal feats with (must match C_MythicPlus season live).
+curl -sfL "https://wago.tools/db2/DisplaySeason/csv" -o db2/DisplaySeason.csv
+echo "Fetched $(wc -l < db2/Achievement.csv | tr -d ' ') achievement rows, $(wc -l < db2/Achievement_Category.csv | tr -d ' ') category rows, $(wc -l < db2/DisplaySeason.csv | tr -d ' ') display-season rows."

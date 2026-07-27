@@ -39,8 +39,50 @@ local UNOBTAINABLE = {
 -- CN Realms carries exactly Ratts' Revenge's flags and category, expired vs.
 -- active season keystone rows match completely). So obtainable FoS comes
 -- from the generated FoSData.lua allowlist (evergreen + current season);
--- this table is the manual escape hatch for additions between regenerations.
-local OBTAINABLE_HIDDEN_FOS = {};
+-- Manual escape hatch for obtainable hidden FoS the generator can't classify.
+-- 61199/61200 "Solo Shuffle / Battleground Blitz Medic: Midnight": obtainable
+-- throughout the Midnight expansion (desc says "during Midnight", no season), but
+-- they live in the PvP category the generator drops when no season is derivable.
+-- Evergreen for now; revisit when Midnight ends.
+local OBTAINABLE_HIDDEN_FOS = {
+	[61199] = true, [61200] = true,
+};
+
+-- Live Mythic+ season number, matching the DisplaySeason.db2 "Season" column
+-- that FoSData's seasonal keystone tags are keyed to. GetCurrentSeason returns
+-- -1 until C_MythicPlus.RequestMapInfo (called on load) populates it; the
+-- newMythicPlusSeason CVar is the immediate stopgap for that window. Returns
+-- nil only if neither source is available.
+local function GetEffectiveMythicPlusSeason()
+	local season = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
+	if season and season > 0 then
+		return season;
+	end
+	local cvar = tonumber(GetCVar and GetCVar("newMythicPlusSeason"));
+	if cvar and cvar > 0 then
+		return cvar;
+	end
+	return nil;
+end
+
+-- An obtainable-FoS entry (from FoSData.lua or the manual escape hatch) is
+-- either `true` (evergreen, always obtainable) or a table {season = N}: a
+-- seasonal keystone feat obtainable only while season N is the live one.
+-- Resolving at runtime means past seasons self-expire and a new season's feats
+-- appear the moment the client reports it -- no regeneration needed for either.
+local function IsObtainableFoS(id, currentSeason)
+	local entry = RA.obtainableHiddenFoS[id];
+	if entry == nil then
+		entry = OBTAINABLE_HIDDEN_FOS[id];
+	end
+	if entry == true then
+		return true;
+	end
+	if type(entry) == "table" and entry.season then
+		return currentSeason ~= nil and entry.season == currentSeason;
+	end
+	return false;
+end
 
 local defaults = {
 	hidden = {},
@@ -314,6 +356,8 @@ local function BuildRemaining()
 		for _, catID in ipairs(GetCategoryList()) do
 			visibleCats[catID] = true;
 		end
+		-- Resolved once per scan; seasonal FoS tags compare against it.
+		local currentMythicSeason = GetEffectiveMythicPlusSeason();
 		for candidate = 1, maxID do
 			local lockedTo = RA.factionLocked[candidate];
 			if not seen[candidate] and not UNOBTAINABLE[candidate]
@@ -329,9 +373,17 @@ local function BuildRemaining()
 					-- FoS entries ride the FoS toggle instead. 0-point hidden
 					-- entries outside FoS are dropped as noise.
 					local wanted = false;
-					if catID and visibleCats[catID] and not excludedCats[GetTopLevelCategory(catID)] then
-						if IsFeatOfStrengthCategory(catID) then
-							wanted = includeFoS and (RA.obtainableHiddenFoS[id] == true or OBTAINABLE_HIDDEN_FOS[id] == true);
+					-- A FoS subcategory that is empty for THIS character (e.g. the
+					-- seasonal keystone bucket, FoS > Dungeons, when none are earned)
+					-- is absent from GetCategoryList, so the visibleCats gate -- which
+					-- exists only to keep the retired "Legacy" tree out of the secret
+					-- path -- would wrongly drop obtainable hidden FoS living there.
+					-- FoS is gated by the allowlist (IsObtainableFoS) instead, and is
+					-- never under Legacy, so for FoS we only require a real FoS category.
+					local isFoSCat = catID and IsFeatOfStrengthCategory(catID);
+					if catID and (visibleCats[catID] or isFoSCat) and not excludedCats[GetTopLevelCategory(catID)] then
+						if isFoSCat then
+							wanted = includeFoS and IsObtainableFoS(id, currentMythicSeason);
 						else
 							wanted = includeSecret and points ~= nil and points > 0;
 						end
@@ -460,6 +512,20 @@ loader:SetScript("OnEvent", function(self, event, arg1)
 		if arg1 == ADDON_NAME then
 			RemainingAchievementsDB = ApplyDefaults(defaults, RemainingAchievementsDB);
 			RA.db = RemainingAchievementsDB;
+			-- GetCurrentSeason returns -1 until this populates; request it early
+			-- so seasonal FoS resolve correctly by the time the tab is opened.
+			-- There is no public "season loaded" event, so the newMythicPlusSeason
+			-- CVar covers the brief window (see GetEffectiveMythicPlusSeason), and
+			-- the deferred refresh below corrects a tab left open across the load.
+			if C_MythicPlus and C_MythicPlus.RequestMapInfo then
+				C_MythicPlus.RequestMapInfo();
+				C_Timer.After(3, function()
+					if RA.db and RA.UI.IsShown() then
+						RA.InvalidateCache();
+						RA.UI.Refresh();
+					end
+				end);
+			end
 			if C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI") then
 				RA.UI.Setup();
 			end
@@ -476,3 +542,95 @@ loader:SetScript("OnEvent", function(self, event, arg1)
 		end
 	end
 end);
+
+-- /raseason -- diagnostic for the FoS seasonal resolver: prints the raw API
+-- season, the CVar stopgap, and the effective season used to decide which
+-- seasonal Feats of Strength are obtainable.
+SLASH_RASEASON1 = "/raseason";
+SlashCmdList["RASEASON"] = function()
+	local raw = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
+	local cvar = GetCVar and GetCVar("newMythicPlusSeason");
+	local eff = GetEffectiveMythicPlusSeason();
+	local source = eff and ((raw and raw > 0) and " (from GetCurrentSeason)" or " (from CVar stopgap)") or " (unknown)";
+	print("|cff33ff99RemainingAchievements|r seasonal FoS diagnostic:");
+	print("  C_MythicPlus.GetCurrentSeason() = " .. tostring(raw));
+	print("  newMythicPlusSeason CVar        = " .. tostring(cvar));
+	print("  effective season for FoS        = " .. tostring(eff) .. source);
+end
+
+-- /radiagnose [achievementID] -- diagnostic for bug reports, shown in a
+-- copy-paste dialog (same Cmd/Ctrl+C flow as the export box). No argument:
+-- client + season + FoS-list summary. With an achievement id: a full trace of
+-- why that achievement does or doesn't land in the FoS list.
+local function DiagnoseAchievement(add, id)
+	add("achievement", id);
+	local isValid = C_AchievementInfo and C_AchievementInfo.IsValidAchievement
+		and C_AchievementInfo.IsValidAchievement(id);
+	add("isValidAchievement", tostring(isValid));
+	local ok, rid, name, points, completed, _, _, _, _, flags, _, _, isGuild, _, _, isStatistic = pcall(GetAchievementInfo, id);
+	if not ok or not rid then
+		add("GetAchievementInfo", "no data (invalid or not loaded)");
+		return;
+	end
+	add("name", tostring(name));
+	add("points", tostring(points), "completed", tostring(completed),
+		"guild", tostring(isGuild), "statistic", tostring(isStatistic));
+	add("flags", string.format("0x%x", flags or 0));
+	local catOK, cat = pcall(GetAchievementCategory, id);
+	cat = catOK and cat or nil;
+	add("category", tostring(cat), "isFoSCategory", tostring(cat and IsFeatOfStrengthCategory(cat)));
+	add("factionLocked", tostring(RA.factionLocked and RA.factionLocked[id]),
+		"playerFaction", tostring(UnitFactionGroup("player")));
+	add("inUNOBTAINABLE", tostring(UNOBTAINABLE[id] == true));
+	local entry = RA.obtainableHiddenFoS[id];
+	if entry == nil then entry = OBTAINABLE_HIDDEN_FOS[id]; end
+	local entryDesc = entry == true and "evergreen (true)"
+		or (type(entry) == "table" and entry.season and ("seasonal {season=" .. entry.season .. "}"))
+		or "not in allowlist";
+	add("allowlistEntry", entryDesc);
+	local cur = GetEffectiveMythicPlusSeason();
+	add("effectiveSeason", tostring(cur), "isObtainableFoS", tostring(IsObtainableFoS(id, cur)));
+end
+
+SLASH_RADIAGNOSE1 = "/radiagnose";
+SlashCmdList["RADIAGNOSE"] = function(msg)
+	local id = tonumber((msg or ""):match("%d+"));
+	local lines = {};
+	local function add(...) lines[#lines + 1] = table.concat({...}, "|"); end
+	add("addonVersion", C_AddOns and C_AddOns.GetAddOnMetadata
+		and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "?");
+	add("client", (GetBuildInfo()), "interface", tostring((select(4, GetBuildInfo()))));
+	local raw = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
+	add("mplusSeasonRaw", tostring(raw), "cvar", tostring(GetCVar and GetCVar("newMythicPlusSeason")),
+		"effective", tostring(GetEffectiveMythicPlusSeason()));
+	add("arenaSeason", tostring(GetCurrentArenaSeason and GetCurrentArenaSeason()),
+		"prevArena", tostring(GetPreviousArenaSeason and GetPreviousArenaSeason()));
+	add("faction", tostring(UnitFactionGroup("player")),
+		"achievementUILoaded", tostring(C_AddOns.IsAddOnLoaded("Blizzard_AchievementUI")));
+	-- FoS allowlist composition + how many resolve obtainable right now.
+	local cur = GetEffectiveMythicPlusSeason();
+	local ever, seasonal, obtainableNow = 0, 0, 0;
+	for _, v in pairs(RA.obtainableHiddenFoS) do
+		if v == true then
+			ever = ever + 1; obtainableNow = obtainableNow + 1;
+		elseif type(v) == "table" and v.season then
+			seasonal = seasonal + 1;
+			if v.season == cur then obtainableNow = obtainableNow + 1; end
+		end
+	end
+	add("fosAllowlist", "evergreen", ever, "seasonal", seasonal,
+		"obtainableAtSeason", tostring(cur), "count", obtainableNow);
+	add("settings", "includeFoS", tostring(RA.db and RA.db.settings.includeFoS),
+		"includeSecret", tostring(RA.db and RA.db.settings.includeSecret));
+	if id then
+		DiagnoseAchievement(add, id);
+	else
+		add("hint", "run /radiagnose <id> to trace a specific achievement");
+	end
+	local text = table.concat(lines, "\n");
+	if RA.ShowCopyDialog then
+		RA.ShowCopyDialog("Remaining Achievements - Diagnostic", text);
+	else
+		print(text); -- fallback if the dialog isn't available
+	end
+end

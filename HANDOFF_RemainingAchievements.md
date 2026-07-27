@@ -9,8 +9,10 @@ if you need the deep Blizzard-UI source references.
 
 A retail addon adding a 4th "Remaining" tab to the Blizzard Achievement UI:
 every incomplete achievement on the account in one searchable list, with
-stash-for-later, spreadsheet (TSV) export, and three beta toggles — hidden
-achievements, obtainable-only Feats of Strength, and an opposite-faction view.
+stash-for-later, category filter, spreadsheet (TSV) export, an opposite-faction
+view, a hidden-achievements toggle, and an obtainable-only Feats of Strength
+toggle (the one still labelled beta — its obtainability is derived data, not a
+game-provided flag).
 
 ## Architecture
 
@@ -20,8 +22,8 @@ achievements, obtainable-only Feats of Strength, and an opposite-faction view.
 | `UI.lua` | Tab + panel + ScrollBox list, toggles, counts header, scanning indicator, ElvUI skin hook |
 | `Export.lua` | TSV builder + copy dialog (columns: ID..Stashed, Hidden, Faction, WowheadURL) |
 | `FactionData.lua` | Generated: faction-locked achievement IDs (API exposes no faction) |
-| `FoSData.lua` | Generated: obtainable hidden FoS allowlist (evergreen + current season) |
-| `tools/` | `fetch-db2.sh` (wago.tools CSV exports → `tools/db2/`, gitignored), `update-faction-data.sh`, `update-fos-data.sh` |
+| `FoSData.lua` | Generated: obtainable hidden FoS allowlist. Entry is `true` (evergreen) or `{season=N}` (seasonal, obtainable only while global M+ season N is live — resolved at runtime, so seasons self-expire) |
+| `tools/` | `fetch-db2.sh` (Achievement/Achievement_Category/DisplaySeason CSVs → `tools/db2/`, gitignored), `update-faction-data.sh`, `update-fos-data.sh`, `test-fos.lua` (regression guard), `probe-season.lua` (in-game season probe) |
 
 ### How the list is built (Core.lua `BuildRemaining`)
 
@@ -32,11 +34,15 @@ achievements, obtainable-only Feats of Strength, and an opposite-faction view.
    PvP 15270, Events 15274) and realm-first flags (0x100|0x200).
 2. **Discovery pass** (hidden/FoS toggles): brute-force IDs 1..max, keep valid
    achievements not in the visible set. Pointed non-FoS → hidden toggle;
-   FoS → only if in the `FoSData.lua`/`OBTAINABLE_HIDDEN_FOS` allowlists.
+   FoS → only if `IsObtainableFoS(id, currentSeason)`: in the
+   `FoSData.lua`/`OBTAINABLE_HIDDEN_FOS` allowlist AND (evergreen OR its
+   `{season=N}` == the live season from `GetEffectiveMythicPlusSeason()`).
    Filters: `RA.factionLocked`, NOISE_FLAGS (realm-first, 0x100000 internal
-   tracking copies, 0x1000000 [DNT] internal), visible-category requirement
-   (kills the hidden "Legacy" tree = retired content), `UNOBTAINABLE`
-   blocklist.
+   tracking copies, 0x1000000 [DNT] internal), `UNOBTAINABLE` blocklist.
+   **FoS candidates BYPASS the visible-category requirement** (that gate exists
+   only to keep the "Legacy" tree out of the *secret* path; FoS subcategories
+   empty for the current character are absent from GetCategoryList, so gating FoS
+   on it wrongly drops them — FoS is allowlist-gated and never under Legacy).
 3. **Opposite-faction merge** (toggle): every completed scan records the
    faction's plain remaining IDs to `db.factionRemaining[faction]`; the other
    faction replays it minus own-visible IDs, same-name achievements (faction
@@ -54,18 +60,29 @@ achievements, obtainable-only Feats of Strength, and an opposite-faction view.
 - **Every FoS achievement is hidden-until-earned (flag 0x800)** — the visible
   walk never yields unearned FoS; the allowlist is the only source.
 - **Expired seasonal feats are byte-identical to obtainable ones in the data**
-  (checked every column incl. LegacyAfterTimeEvent). Only the current-season
-  markers in `tools/update-fos-data.sh` distinguish them.
-- **The criteria layer has no obtainability signal either** (verified
-  2026-07-26 against CriteriaTree/Criteria/ModifierTree exports): expired vs
-  current Keystone Master trees are identical (bare Type-250 rating check,
-  season is server-side); Challenge Master / Keystone Victor / gladiator
-  mounts have NO modifier trees at all; the Type-289 "time event" condition
-  on new content references a TimeEvent table that is not shipped to the
-  client (absent from wago.tools) and stays in the data after the window
-  closes. Do not re-investigate — the text-heuristic allowlist is the only
-  client-side option. (DisplaySeason.db2 does exist and names the current
-  season, usable to auto-derive the season-label CURRENT_MARKER.)
+  (checked every column incl. LegacyAfterTimeEvent) — there is no per-row
+  obtainability flag. The criteria layer has none either (verified 2026-07-26
+  against CriteriaTree/Criteria/ModifierTree: expired vs current Keystone Master
+  trees identical, bare Type-250 rating check; Challenge Master / Keystone
+  Victor / gladiator mounts have NO modifier trees; Type-289 "time event"
+  references a client-absent TimeEvent table). Do not re-investigate for a flag.
+- **Obtainability is instead RESOLVED AT RUNTIME (2026-07-27 redesign).** The
+  generator tags each seasonal feat with its global M+ season number, derived
+  from its title/description ("<Expansion> Season N") via `DisplaySeason.db2`
+  (whose `Season` column == the number `C_MythicPlus.GetCurrentSeason()` returns
+  live). The addon shows a `{season=N}` feat only while `N == effective current
+  season`, so past seasons self-expire and new ones appear with no regen. This
+  REPLACED the old per-season `CURRENT_MARKERS` text heuristic (deleted). Classes
+  whose season isn't in the text: PvP (dropped if not season-derivable — all
+  obtainable PvP feats carry a season) and raid AotC/Cutting Edge (tagged via the
+  small hand-kept `RAID_TIER_SEASON` instance→season map — db2 has NO raid
+  instance→season link; add a raid's Instance_ID when a new tier ships).
+- **GetCurrentSeason() returns -1 until `C_MythicPlus.RequestMapInfo()` populates
+  it** (called on load); guard `<=0` and fall back to the `newMythicPlusSeason`
+  CVar. There is NO "season loaded" event — `MYTHIC_PLUS_CURRENT_SEASON_UPDATE`
+  does not exist and RegisterEvent throws on it. `DisplaySeason` is datamined
+  AHEAD of live (had a season-18 row while live was 17) — trust the API, not the
+  max row.
 - **No faction field in the API** and `Shares_criteria` is 0 on all 1258
   faction-locked rows — there is no structural mirror-pair link.
 - Never full-rescan on `CRITERIA_UPDATE` (fires constantly); full rescan on
@@ -75,12 +92,17 @@ achievements, obtainable-only Feats of Strength, and an opposite-faction view.
 
 ## Recurring chores
 
-- **Each season (important):** edit `CURRENT_MARKERS` in
-  `tools/update-fos-data.sh` (new season branding strings), run it and
-  `tools/update-faction-data.sh`, release. Without this the FoS toggle ages.
+- **Seasonal FoS no longer needs a per-season edit** — feats self-expire via the
+  runtime resolver. Regen (`tools/update-fos-data.sh`) only to pick up
+  newly-datamined feats. Being late just misses new feats; it never shows dead
+  ones. Per-*expansion* (rare): add the expansion's name→ExpansionID to
+  `EXPANSIONS` in the generator. Per-*raid-tier*: add the raid's Instance_ID to
+  `RAID_TIER_SEASON`. Run `tools/test-fos.lua` after any regen (regression guard).
 - **Data freshness rule (Andrew's):** any achievement-data analysis must use
   `tools/db2/` CSVs less than a week old — run `tools/fetch-db2.sh` first.
 - **From reports:** grow `UNOBTAINABLE` / `OBTAINABLE_HIDDEN_FOS` in Core.lua.
+  `/radiagnose <id>` in-game prints a full trace of why an achievement does or
+  doesn't show — ask testers to paste it.
 - **Post-patch validation:** the deterministic pointed-hidden set (flags
   0x800, points>0, non-Legacy/FoS) should be covered by the hidden toggle;
   it was 8 obtainable achievements on 2026-07-26.

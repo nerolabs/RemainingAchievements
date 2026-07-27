@@ -110,6 +110,61 @@ local function CreateDialog()
 	end);
 end
 
+-- Generic read-only copy-paste dialog (same Cmd/Ctrl+C flow as the export box),
+-- reused by /radiagnose. Separate frame from the export dialog so neither
+-- affects the other.
+local copyDialog, copyEditBox;
+function RA.ShowCopyDialog(titleText, bodyText)
+	if not copyDialog then
+		copyDialog = CreateFrame("Frame", "RemainingAchievementsCopyDialog", UIParent, "DefaultPanelFlatTemplate");
+		copyDialog:SetSize(540, 420);
+		copyDialog:SetPoint("CENTER");
+		copyDialog:SetFrameStrata("DIALOG");
+		copyDialog:SetToplevel(true);
+		copyDialog:SetMovable(true);
+		copyDialog:EnableMouse(true);
+		copyDialog:RegisterForDrag("LeftButton");
+		copyDialog:SetScript("OnDragStart", copyDialog.StartMoving);
+		copyDialog:SetScript("OnDragStop", copyDialog.StopMovingOrSizing);
+		copyDialog:SetClampedToScreen(true);
+		tinsert(UISpecialFrames, "RemainingAchievementsCopyDialog");
+
+		local close = CreateFrame("Button", nil, copyDialog, "UIPanelCloseButton");
+		close:SetPoint("TOPRIGHT", -2, -1);
+		close:SetScript("OnClick", function()
+			copyDialog:Hide();
+		end);
+
+		local hint = copyDialog:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall");
+		hint:SetPoint("TOPLEFT", 14, -30);
+		hint:SetText("Press " .. (IsMacClient() and "Cmd" or "Ctrl") .. "+C to copy, then paste into your report.");
+
+		local scrollFrame = CreateFrame("ScrollFrame", nil, copyDialog, "UIPanelScrollFrameTemplate");
+		scrollFrame:SetPoint("TOPLEFT", 14, -50);
+		scrollFrame:SetPoint("BOTTOMRIGHT", -32, 12);
+
+		copyEditBox = CreateFrame("EditBox", nil, scrollFrame);
+		copyEditBox:SetMultiLine(true);
+		copyEditBox:SetMaxLetters(0);
+		copyEditBox:SetFontObject(GameFontHighlightSmall);
+		copyEditBox:SetWidth(480);
+		copyEditBox:SetAutoFocus(false);
+		copyEditBox:SetScript("OnEscapePressed", function()
+			copyDialog:Hide();
+		end);
+		scrollFrame:SetScrollChild(copyEditBox);
+		scrollFrame:SetScript("OnSizeChanged", function(self, width)
+			copyEditBox:SetWidth(width);
+		end);
+	end
+	copyDialog.TitleContainer.TitleText:SetText(titleText);
+	copyDialog:Show();
+	copyEditBox:SetText(bodyText);
+	copyEditBox:SetCursorPosition(0);
+	copyEditBox:SetFocus();
+	copyEditBox:HighlightText();
+end
+
 function Export.Show(entries, isFiltered)
 	if not dialog then
 		CreateDialog();
