@@ -39,9 +39,12 @@ BAD_FLAGS = 0x100 | 0x200 | 0x40000 | 0x100000 | 0x1000000 | 0x1
 # challenge modes removed at Legion prepatch), "region-best" (Keystone Victor
 # — same one-slot competitive class as realm-first, and expired-season copies
 # carry no season wording), "no longer attainable" (Old School Ride says it
-# outright).
+# outright), "(legacy)" title suffix (Blizzard's own marker for the retired
+# version of a superseded achievement, e.g. 15654 "Back from the Beyond
+# (Legacy)" — always the unobtainable copy).
 JUNK = re.compile(r"stress test|remix|awakened|deprecated|\[dnt\]|\(copy\)"
-                  r"|realm first|realm-best|region-best|no longer attainable")
+                  r"|realm first|realm-best|region-best|no longer attainable"
+                  r"|\(legacy\)")
 # Marks a feat as time-limited so, if its season couldn't be derived from the
 # title, it is dropped rather than kept as evergreen. NOT a plain "before":
 # evergreen feats use it too ("before any player is hit", 4524; "the hallway

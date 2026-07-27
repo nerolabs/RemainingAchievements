@@ -140,7 +140,6 @@ RA.obtainableHiddenFoS = {
 	[15610] = { season = 8 }, -- Combatant II: Shadowlands Season 4
 	[15612] = { season = 8 }, -- Eternal Gladiator's Soul Eater
 	[15639] = { season = 8 }, -- Elite: Shadowlands Season 4
-	[15654] = true, -- Back from the Beyond (Legacy)
 	[15684] = { season = 8 }, -- Fates of the Shadowlands Raids
 	[15685] = { season = 8 }, -- Heroic: Fates of the Shadowlands Raids
 	[15687] = { season = 8 }, -- Mythic: Fates of the Shadowlands Raids
