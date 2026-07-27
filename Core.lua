@@ -34,12 +34,18 @@ local OBTAINABLE_HIDDEN_FOS = {
 -- -1 until C_MythicPlus.RequestMapInfo (called on load) populates it; the
 -- newMythicPlusSeason CVar is the immediate stopgap for that window. Returns
 -- nil only if neither source is available.
+-- CVar read via the modern C_CVar namespace (the global GetCVar is deprecated),
+-- nil-safe.
+local function GetCVarValue(name)
+	return C_CVar and C_CVar.GetCVar and C_CVar.GetCVar(name);
+end
+
 local function GetEffectiveMythicPlusSeason()
 	local season = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
 	if season and season > 0 then
 		return season;
 	end
-	local cvar = tonumber(GetCVar and GetCVar("newMythicPlusSeason"));
+	local cvar = tonumber(GetCVarValue("newMythicPlusSeason"));
 	if cvar and cvar > 0 then
 		return cvar;
 	end
@@ -532,7 +538,7 @@ end);
 SLASH_RASEASON1 = "/raseason";
 SlashCmdList["RASEASON"] = function()
 	local raw = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
-	local cvar = GetCVar and GetCVar("newMythicPlusSeason");
+	local cvar = GetCVarValue("newMythicPlusSeason");
 	local eff = GetEffectiveMythicPlusSeason();
 	local source = eff and ((raw and raw > 0) and " (from GetCurrentSeason)" or " (from CVar stopgap)") or " (unknown)";
 	print("|cff33ff99RemainingAchievements|r seasonal FoS diagnostic:");
@@ -584,7 +590,7 @@ SlashCmdList["RADIAGNOSE"] = function(msg)
 		and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "?");
 	add("client", (GetBuildInfo()), "interface", tostring((select(4, GetBuildInfo()))));
 	local raw = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
-	add("mplusSeasonRaw", tostring(raw), "cvar", tostring(GetCVar and GetCVar("newMythicPlusSeason")),
+	add("mplusSeasonRaw", tostring(raw), "cvar", tostring(GetCVarValue("newMythicPlusSeason")),
 		"effective", tostring(GetEffectiveMythicPlusSeason()));
 	add("arenaSeason", tostring(GetCurrentArenaSeason and GetCurrentArenaSeason()),
 		"prevArena", tostring(GetPreviousArenaSeason and GetPreviousArenaSeason()));
