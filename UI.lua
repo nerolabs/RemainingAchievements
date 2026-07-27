@@ -13,7 +13,7 @@ end
 
 -- Entries currently displayable, plus counts for the header
 -- (remaining/points always exclude hidden, regardless of the toggle;
--- opposite-faction mirrors are listed but never counted, matching the
+-- opposite-faction entries are listed but never counted, matching the
 -- in-game point total). Empty until the first scan completes.
 function UI.GetDisplayEntries()
 	local showHidden = RA.db.settings.showHidden;
@@ -489,7 +489,21 @@ local function CreatePanel()
 		GameTooltip:AddLine("Achievements only the other faction can still earn, DataForAzeroth-style. Uses the Remaining list recorded when a character of that faction opens this tab.", nil, nil, nil, true);
 		local snapshot, otherFaction = RA.GetOppositeSnapshot();
 		if snapshot then
-			GameTooltip:AddLine(("Using the %s list from %s, recorded %s."):format(otherFaction, snapshot.character, date("%Y-%m-%d %H:%M", snapshot.when)), 0.6, 0.9, 0.6, true);
+			-- Snapshots self-heal (account-completed entries are filtered out on
+			-- every scan), so staleness is a soft nudge: green when fresh, amber
+			-- past two weeks, orange past a month -- prompting a re-open on that
+			-- faction so newly-added achievements make it into the list.
+			local ageDays = math.floor((time() - (snapshot.when or 0)) / 86400);
+			local ageText = (ageDays <= 0 and "today")
+				or (ageDays == 1 and "yesterday")
+				or (ageDays .. " days ago");
+			local r, g, b = 0.6, 0.9, 0.6;
+			if ageDays >= 30 then r, g, b = 1, 0.5, 0.3;
+			elseif ageDays >= 14 then r, g, b = 1, 0.82, 0.3; end
+			GameTooltip:AddLine(("Using the %s list from %s, recorded %s (%s)."):format(otherFaction, snapshot.character, date("%Y-%m-%d %H:%M", snapshot.when), ageText), r, g, b, true);
+			if ageDays >= 14 then
+				GameTooltip:AddLine(("Log into a %s character and open the Remaining tab to refresh it."):format(otherFaction), r, g, b, true);
+			end
 		elseif otherFaction then
 			GameTooltip:AddLine(("No %s data yet: log into a %s character and open the Remaining tab once."):format(otherFaction, otherFaction), 1, 0.5, 0.3, true);
 		else

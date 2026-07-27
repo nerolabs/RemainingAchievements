@@ -226,9 +226,9 @@ local function BuildRemaining()
 	local includeMirror = RA.db.settings.includeMirror;
 	local processed = 0;
 	-- seen/highestID feed the discovery pass below. visibleNames powers the
-	-- mirror dedup: a same-name achievement on our side (earned or not) means
-	-- the opposite-faction copy is the same achievement, not a true mirror
-	-- like Seasoned Hunter Akana / Seasoned Poen Gillbrack.
+	-- opposite-faction dedup: a same-name achievement on our side (earned or
+	-- not) means the opposite-faction copy is the same achievement, not a
+	-- distinct one like Seasoned Hunter Akana / Seasoned Poen Gillbrack.
 	local seen, highestID = {}, 0;
 	local visibleNames = includeMirror and {} or nil;
 	local snapshotIds = {};
