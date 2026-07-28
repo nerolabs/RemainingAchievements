@@ -1,10 +1,12 @@
 # Maintainer handoff: RemainingAchievements
 
-**Status:** v0.7.0 shipped 2026-07-27 (CurseForge project 1626227, slug
-`remaining-achievements`; GitHub nerolabs/RemainingAchievements). v0.7.0 added
-full UI localization (10 machine-translated locales). This file replaces the
-original pre-v0.1 research handoff; git history has that version if you need the
-deep Blizzard-UI source references.
+**Status:** v0.8.1 shipped 2026-07-28 (CurseForge project 1626227, slug
+`remaining-achievements`; **also on Wago Addons**, project `mNw71WNo`; GitHub
+nerolabs/RemainingAchievements). v0.8.0/0.8.1 added in-app feedback (a per-row
+report flag on FoS/hidden rows + `/rafeedback`); v0.7.0 added full UI
+localization (10 machine-translated locales). This file replaces the original
+pre-v0.1 research handoff; git history has that version if you need the deep
+Blizzard-UI source references.
 
 ## What it is
 
@@ -13,7 +15,9 @@ every incomplete achievement on the account in one searchable list, with
 stash-for-later, category filter, spreadsheet (TSV) export, an opposite-faction
 view, a hidden-achievements toggle, and an obtainable-only Feats of Strength
 toggle (the one still labelled beta — its obtainability is derived data, not a
-game-provided flag). Fully localized (10 languages, machine-translated).
+game-provided flag). Fully localized (10 languages, machine-translated). FoS and
+hidden rows also carry a **report flag** — one click builds a ready-to-paste bug
+report (the `/radiagnose` trace) so testers can flag a mis-listed achievement.
 
 ## Architecture
 
@@ -110,8 +114,10 @@ game-provided flag). Fully localized (10 languages, machine-translated).
 - **Data freshness rule (Andrew's):** any achievement-data analysis must use
   `tools/db2/` CSVs less than a week old — run `tools/fetch-db2.sh` first.
 - **From reports:** grow `UNOBTAINABLE` / `OBTAINABLE_HIDDEN_FOS` in Core.lua.
-  `/radiagnose <id>` in-game prints a full trace of why an achievement does or
-  doesn't show — ask testers to paste it.
+  The in-app **report flag** on FoS/hidden rows (and `/radiagnose <id>`) builds a
+  full paste-ready trace of why an achievement does or doesn't show — testers can
+  send it straight from the row. Implemented via `BuildDiagnostic()` + `RA.ShowReport()`
+  in Core.lua and `RAReportButton` (gated on `elementData.secret`) in UI.lua.
 - **Post-patch validation:** the deterministic pointed-hidden set (flags
   0x800, points>0, non-Legacy/FoS) should be covered by the hidden toggle;
   it was 8 obtainable achievements on 2026-07-26.
@@ -132,7 +138,16 @@ game-provided flag). Fully localized (10 languages, machine-translated).
   (ElvUI + BugSack) before anything is tagged.
 - Release: bump `## Version` in the TOC, commit, `git tag vX.Y.Z`,
   `git push origin main vX.Y.Z` — the GitHub workflow (BigWigsMods/packager)
-  uploads to CurseForge + GitHub Releases automatically.
+  uploads to **CurseForge + Wago + GitHub Releases** automatically (Wago via
+  `## X-Wago-ID: mNw71WNo` + the `WAGO_API_TOKEN` repo secret; WoWInterface was
+  evaluated and dropped — dead community).
+- **Changelog hygiene:** the packager builds each release's changelog from every
+  commit since the last tag and publishes it (GitHub notes, CF/Wago changelogs,
+  and a CHANGELOG.md inside the zip), so keep commit messages clean. A local
+  `.git/hooks/commit-msg` hook strips `Claude-Session:` trailers so they can't
+  leak (local + skippable via `--no-verify`, not tracked/pushed).
 - CurseForge listing edits: authors portal → project 1626227; paste
   description in **Markdown editor mode** (WYSIWYG mangles markdown). Copy
-  source of truth: `assets/curseforge-listing.md`.
+  source of truth: `assets/curseforge-listing.md`. Wago description is a static
+  field (Settings → Description; does NOT re-sync from README) — keep it in step
+  with the CF copy; gallery/screenshots are a manual per-host upload.
