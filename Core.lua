@@ -581,14 +581,17 @@ local function DiagnoseAchievement(add, id)
 	add("effectiveSeason", tostring(cur), "isObtainableFoS", tostring(IsObtainableFoS(id, cur)));
 end
 
-SLASH_RADIAGNOSE1 = "/radiagnose";
-SlashCmdList["RADIAGNOSE"] = function(msg)
-	local id = tonumber((msg or ""):match("%d+"));
+-- Shared builder: the full diagnostic text for a bug report. Reused by
+-- /radiagnose and by the per-row report flag (RA.ShowReport). Kept English on
+-- purpose -- the maintainer reads these, not the reporter (same as the export
+-- headers). Pass an id for a full per-achievement trace, or nil for the summary.
+local function BuildDiagnostic(id)
 	local lines = {};
 	local function add(...) lines[#lines + 1] = table.concat({...}, "|"); end
 	add("addonVersion", C_AddOns and C_AddOns.GetAddOnMetadata
 		and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "?");
 	add("client", (GetBuildInfo()), "interface", tostring((select(4, GetBuildInfo()))));
+	add("locale", GetLocale());
 	local raw = C_MythicPlus and C_MythicPlus.GetCurrentSeason and C_MythicPlus.GetCurrentSeason();
 	add("mplusSeasonRaw", tostring(raw), "cvar", tostring(GetCVarValue("newMythicPlusSeason")),
 		"effective", tostring(GetEffectiveMythicPlusSeason()));
@@ -616,10 +619,47 @@ SlashCmdList["RADIAGNOSE"] = function(msg)
 	else
 		add("hint", "run /radiagnose <id> to trace a specific achievement");
 	end
-	local text = table.concat(lines, "\n");
+	return table.concat(lines, "\n");
+end
+
+local function ShowText(title, text)
 	if RA.ShowCopyDialog then
-		RA.ShowCopyDialog("Remaining Achievements - Diagnostic", text);
+		RA.ShowCopyDialog(title, text);
 	else
 		print(text); -- fallback if the dialog isn't available
 	end
+end
+
+SLASH_RADIAGNOSE1 = "/radiagnose";
+SlashCmdList["RADIAGNOSE"] = function(msg)
+	local id = tonumber((msg or ""):match("%d+"));
+	ShowText("Remaining Achievements - Diagnostic", BuildDiagnostic(id));
+end
+
+-- Feedback plumbing. Report/feedback bodies stay English (bug reports for the
+-- maintainer); the row flag's tooltip is the only user-facing part and is
+-- localized in UI.lua.
+local ISSUES_URL = "https://github.com/nerolabs/RemainingAchievements/issues";
+local CF_URL = "https://www.curseforge.com/wow/addons/remaining-achievements";
+
+-- Per-row "report this achievement" flag (shown only on FoS/hidden rows, where
+-- obtainability is derived and a "shouldn't be here / is missing" report is
+-- actionable). Bundles the full diagnostic so reports arrive ready to triage.
+function RA.ShowReport(id)
+	local header = "Feat of Strength / hidden achievement that looks wrong -- listed but not "
+		.. "actually obtainable, or missing when it should show?\n"
+		.. "Open a new issue and paste all of this in (add a line on what's wrong):\n"
+		.. ISSUES_URL .. "\n"
+		.. string.rep("-", 50) .. "\n";
+	ShowText("Remaining Achievements - Report", header .. BuildDiagnostic(id));
+end
+
+SLASH_RAFEEDBACK1 = "/rafeedback";
+SlashCmdList["RAFEEDBACK"] = function()
+	local body = "Remaining Achievements -- feedback & bug reports\n\n"
+		.. "GitHub issues (best for bugs): " .. ISSUES_URL .. "\n"
+		.. "CurseForge comments: " .. CF_URL .. "\n\n"
+		.. "Tip: for a Feat of Strength or hidden achievement that shouldn't be listed "
+		.. "(or is missing), click the flag on its row -- it builds a ready-to-paste report.";
+	ShowText("Remaining Achievements - Feedback", body);
 end

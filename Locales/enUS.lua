@@ -54,6 +54,10 @@ L["Track on HUD"] = "Track on HUD";
 L["Untrack on HUD"] = "Untrack on HUD";
 L["Link to chat"] = "Link to chat";
 
+-- Per-row report flag (FoS/hidden rows). The report body itself stays English.
+L["Report this achievement"] = "Report this achievement";
+L["Listed but not obtainable, or wrong? Opens a ready-to-paste report."] = "Listed but not obtainable, or wrong? Opens a ready-to-paste report.";
+
 -- Misc
 L["Export Spreadsheet"] = "Export Spreadsheet";
 L["Updating..."] = "Updating...";

@@ -258,6 +258,28 @@ local function HideButtonOnEnter(self)
 	GameTooltip:Show();
 end
 
+-- Per-row "report this achievement" flag. Only shown on FoS/hidden rows
+-- (elementData.secret), where obtainability is derived and a "shouldn't be
+-- here / is missing" report is actually actionable -- keeping it off the ~95%
+-- of deterministic rows.
+-- NOTE: verify this glyph renders in-game; swap the path if it shows as a
+-- missing (green/black) texture.
+local REPORT_FLAG_TEXTURE = "Interface\\HelpFrame\\HelpIcon-ReportAbuse";
+
+local function ReportButtonOnEnter(self)
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+	GameTooltip:SetText(L["Report this achievement"], 1, 1, 1);
+	GameTooltip:AddLine(L["Listed but not obtainable, or wrong? Opens a ready-to-paste report."], nil, nil, nil, true);
+	GameTooltip:Show();
+end
+
+local function OnReportButtonClick(self)
+	local elementData = self:GetParent():GetElementData();
+	if elementData and RA.ShowReport then
+		RA.ShowReport(elementData.id);
+	end
+end
+
 -- Standalone HUD-tracking toggle (mirrors AchievementTemplateMixin:ToggleTracking
 -- without needing a live row, since pooled rows can be recycled under a menu).
 local function ToggleHUDTracking(id)
@@ -359,8 +381,20 @@ local function InitializeRow(button, elementData)
 		hideButton:SetScript("OnEnter", HideButtonOnEnter);
 		hideButton:SetScript("OnLeave", GameTooltip_Hide);
 		button.RAHideButton = hideButton;
+
+		local reportButton = CreateFrame("Button", nil, button);
+		reportButton:SetSize(16, 16);
+		reportButton:SetPoint("RIGHT", hideButton, "LEFT", -4, 0);
+		reportButton:SetNormalTexture(REPORT_FLAG_TEXTURE);
+		reportButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD");
+		reportButton:SetScript("OnClick", OnReportButtonClick);
+		reportButton:SetScript("OnEnter", ReportButtonOnEnter);
+		reportButton:SetScript("OnLeave", GameTooltip_Hide);
+		button.RAReportButton = reportButton;
 	end
 	UpdateRowHiddenState(button);
+	-- Report flag only on the derived-obtainability rows (FoS + hidden).
+	button.RAReportButton:SetShown(elementData.secret == true);
 end
 
 -- [[ Panel construction ]] --
